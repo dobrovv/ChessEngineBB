@@ -4,7 +4,6 @@
 #include <chrono>
 
 #include "board.h"
-#include "movegen.h"
 
 using namespace std;
 
@@ -43,7 +42,6 @@ ostream& print_square(const Square& square, ostream& os = std::cout) {
     symbolic[0] = 'a' + square.file();
     symbolic[1] = '1' + square.rank();
     return os << symbolic;
-
 }
 
 ostream& print_move(const Move& move, ostream& os = std::cout) {
@@ -56,25 +54,49 @@ ostream& print_move(const Move& move, ostream& os = std::cout) {
     return os;
 }
 
+uint64_t perft(Board& b, int depth){
+    if (depth == 0)
+        return 1;
+
+    std::vector<Move> moveList;
+    moveList.reserve(256);
+    uint64_t nodes = 0;
+    b.movesForSide(b.sideToMove(), moveList);
+
+    for (Move move : moveList) {
+
+        b.moveDo(move);
+        //print_board(b);
+        //cout << "\n";
+        //cin.get();
+        nodes += perft(b, depth - 1);
+        b.moveUndo();
+    }
+    return nodes;
+
+}
 
 int main()
 {
-//    Board b = Board::fromFEN("8/8/8/8/8/8/kpn5/P7 w");
-//    print_board(b);
-//    cout << endl;
-//    print_bb(b.attackers<Black>(a1));
-//    cout << endl;
-//    print_bb(b.attackers<White>(b2));
 
-//    return 0;
+    Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 
-    Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w");
-    //Board board = Board::fromFEN("8/8/8/pppppppp/PPPPPPPP/8/8/8 w KQkq - 0 1");
+    auto start_time = std::chrono::high_resolution_clock::now();
+    uint64_t result = perft(board, 5);
+    auto stop_time = std::chrono::high_resolution_clock::now();
+
+    int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
+    delta_ms = std::max(delta_ms, 1); // prevent the good old divide by 0 problem :)
+
+    cout << "Perft Nodes: " <<  result << " " << delta_ms << " ms " << (result / delta_ms * 1000) << " nodes/s" << endl;
+    return 0;
+
     print_board(board);
     cout << endl;
 
     std::vector<Move> possibleMoves;
     board.movesForSide(board.sideToMove(), possibleMoves);
+
 
     int movecnt = 0;
 
@@ -87,9 +109,7 @@ int main()
         cout << endl;
         if (randMove.isCapture())
             cin.get();
-
         //this_thread::sleep_for(chrono::milliseconds(1000));
-        //cin.get();
 
         possibleMoves.clear();
         board.movesForSide(board.sideToMove(), possibleMoves);

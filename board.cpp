@@ -1,6 +1,7 @@
 #include "board.h"
 #include <sstream>
 #include <iterator>
+#include <iostream>
 
 Board::Board()
 {
@@ -106,7 +107,61 @@ void Board::moveDo(Move move)
 
 void Board::moveUndo()
 {
+    // restore state
+    setPositionState(state_stack.back());
+    state_stack.pop_back();
 
+    Move move = moves_done.back();
+    MoveType moveType = move.type();
+    Piece pieceOrig = pieceAt(move.target());
+
+    if (moveType == QuietMove) {
+        removePiece(move.target() );
+        setPiece(pieceOrig, move.origin() );
+    } else if (moveType == Capture) {
+        removePiece(move.target() );
+        setPiece(captured_pieses.back(), move.target() );
+        captured_pieses.pop_back();
+        setPiece(pieceOrig, move.origin() );
+
+    } else if (moveType == DoublePush) {
+        removePiece(move.target() );
+        setPiece(pieceOrig, move.origin() );
+    } else if (move.isPromotion() ) {
+        removePiece(move.target());
+        if (move.isCapture() ) {
+            setPiece(captured_pieses.back(), move.target() );
+            captured_pieses.pop_back();
+        }
+        setPiece(pieceOrig.color(), Pawn, move.origin());
+    } else if (move.isCastle()) {
+        if (move.type() == CastleQSide) {
+            const Square rookQSide   = pieceOrig.color() == White ? Square(a1) : Square(a8);
+            const Square rookQTarget = pieceOrig.color() == White ? Square(d1) : Square(d8);
+            removePiece(rookQTarget);
+            setPiece(pieceOrig.color(), Rook, rookQSide);
+            removePiece(move.target() );
+            setPiece(pieceOrig, move.origin() );
+        } else {
+            const Square rookKSide   = pieceOrig.color() == White ? Square(h1) : Square(h8);
+            const Square rookKTarget = pieceOrig.color() == White ? Square(f1) : Square(f8);
+            removePiece(rookKTarget);
+            setPiece(pieceOrig.color(), Rook, rookKSide);
+            removePiece(move.target() );
+            setPiece(pieceOrig, move.origin() );
+        }
+    } else if (moveType == CaptureEnPas) {
+        Square capturedPawn = pieceOrig.color() == White
+                ? move.target().prevRank()
+                : move.target().nextRank();
+        setPiece(captured_pieses.back(), capturedPawn);
+        captured_pieses.pop_back();
+        removePiece(move.target() );
+        setPiece(pieceOrig, move.origin() );
+    }
+
+    moves_done.pop_back();
+    side = !side;
 }
 
 Board Board::fromFEN(std::string fenRecord)

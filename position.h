@@ -21,8 +21,7 @@ enum CastlingRights : std::uint8_t {
 const Square NOT_ENPASSANT(a1); // invalid En Passant square
 
 struct PositionState {
-    std::uint8_t
-    castle_rights;
+    std::uint8_t castle_rights;
     Square epSquare;            // En Passant square, a1 == invalid
     std::uint8_t halfmove_clock; // half move clock;
 };
@@ -67,17 +66,17 @@ public:
     template<PieceColor bySide>
     bool isAttacked(Square square);
 
-    template<PieceColor bySide>
+    template<PieceColor color>
     bool isKingAttacked();
 
-    template<PieceColor bySide>
+    template<PieceColor color>
     bool isPinned(Square pinned, Square to, Direction ignored = DIRECTION_CNT);
 
-    template<PieceColor bySide>
+    template<PieceColor color>
     bool isAbsolutelyPinned(Square to, Direction ignored = DIRECTION_CNT);
 
     void movesForSide(PieceColor color, std::vector<Move>& moveList);
-
+    //void movesForPawns(PieceColor color, std::vector<Move> &moveList);
 
 private:    /* helper functions */
     template<PieceColor color>
@@ -94,6 +93,9 @@ private:    /* helper functions */
 
     template<PieceColor color>
     void movesToSquare(Square target, std::vector<Move>& moveList);
+
+    template<PieceColor color>
+    void movesUnderCheck(std::vector<Move> &moveList);
 
     template<PieceColor color> Bitboard pawnsPush();
     template<PieceColor color> Bitboard pawnsPushDouble();
@@ -176,7 +178,7 @@ bool Position::isKingAttacked() {
     return false;
 }
 
-template<PieceColor bySide>
+template<PieceColor color>
 bool Position::isPinned(Square pinned, Square to, Direction ignored) {
     Direction dir = fromToDirection[to][pinned];
     if (dir == DIRECTION_CNT || dir == ignored)
@@ -184,7 +186,7 @@ bool Position::isPinned(Square pinned, Square to, Direction ignored) {
 
     Bitboard occupied_set = occupied();
     reset_ref_bb(occupied_set, pinned);
-    Bitboard ray = rayPieceSteps(occupied_set, to, dir) & colored(bySide);
+    Bitboard ray = rayPieceSteps(occupied_set, to, dir) & colored(!color);
     if (ray) {
         Square attackerSquare = pop_lsb(ray);
         Piece attacker = pieceAt(attackerSquare);
@@ -198,12 +200,12 @@ bool Position::isPinned(Square pinned, Square to, Direction ignored) {
     return false;
 }
 
-template<PieceColor bySide>
+template<PieceColor color>
 bool Position::isAbsolutelyPinned(Square pinned, Direction ignored) {
-    Bitboard kings = pieces(!bySide, King);
+    Bitboard kings = pieces(color, King);
     if (kings) {
         Square kingSquare = bitscan_forward(kings);
-        return isPinned<bySide>(pinned, kingSquare, ignored);
+        return isPinned<color>(pinned, kingSquare, ignored);
     }
     return false;
 }
