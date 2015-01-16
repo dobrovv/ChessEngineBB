@@ -9,6 +9,7 @@ Board::Board()
 
 void Board::moveDo(Move move)
 {
+
     MoveType moveType = move.type();
     Piece piece = pieceAt(move.origin() );
 

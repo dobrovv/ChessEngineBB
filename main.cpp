@@ -54,11 +54,15 @@ ostream& print_move(const Move& move, ostream& os = std::cout) {
     return os;
 }
 
+static int gDepth;
 uint64_t perft(Board& b, int depth){
-    if (depth == 0)
+    if (depth == 0) {
+        ++gDepth;
+        //cout << gDepth << endl;
         return 1;
+    }
 
-    std::vector<Move> moveList;
+    vector<Move> moveList;
     moveList.reserve(256);
     uint64_t nodes = 0;
     b.movesForSide(b.sideToMove(), moveList);
@@ -78,43 +82,16 @@ uint64_t perft(Board& b, int depth){
 
 int main()
 {
-
-    Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-
+    //Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    Board board = Board::fromFEN("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
     auto start_time = std::chrono::high_resolution_clock::now();
-    uint64_t result = perft(board, 5);
+    uint64_t result = perft(board, 4);
     auto stop_time = std::chrono::high_resolution_clock::now();
 
     int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
     delta_ms = std::max(delta_ms, 1); // prevent the good old divide by 0 problem :)
 
     cout << "Perft Nodes: " <<  result << " " << delta_ms << " ms " << (result / delta_ms * 1000) << " nodes/s" << endl;
-    return 0;
-
-    print_board(board);
-    cout << endl;
-
-    std::vector<Move> possibleMoves;
-    board.movesForSide(board.sideToMove(), possibleMoves);
-
-
-    int movecnt = 0;
-
-    while (possibleMoves.size()) {
-        cout << endl;
-        Move randMove = possibleMoves[rand() % possibleMoves.size()];
-        print_move(randMove) <<" #" << ++movecnt << endl;
-        board.moveDo(randMove);
-        print_board(board);
-        cout << endl;
-        if (randMove.isCapture())
-            cin.get();
-        //this_thread::sleep_for(chrono::milliseconds(1000));
-
-        possibleMoves.clear();
-        board.movesForSide(board.sideToMove(), possibleMoves);
-    }
-
     return 0;
 }
 

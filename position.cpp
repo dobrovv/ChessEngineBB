@@ -45,6 +45,7 @@ void Position::setPiece(PieceColor color, PieceType type, Square square)
 void Position::removePiece(Square square)
 {
     assert(piece_at[square].type() != Empty);
+
     Piece p = piece_at[square];
 
     reset_ref_bb(occupied_bb, square);

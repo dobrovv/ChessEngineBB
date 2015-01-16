@@ -70,10 +70,11 @@ enum MoveType : std::uint8_t {
     Capture         = SHL(1,2),
     CaptureEnPas    = Capture | Special_0,
     //////////////////////////////////////
-    PromToKnight    = SHL(1,3),
-    PromToBishop    = PromToKnight | Special_0,
-    PromToRook      = PromToKnight | Special_1,
-    PromToQueen     = PromToKnight | Special_0 | Special_1,
+    Promotion       = SHL(1,3),
+    PromToKnight    = Promotion,
+    PromToBishop    = Promotion | Special_0,
+    PromToRook      = Promotion | Special_1,
+    PromToQueen     = Promotion | Special_0 | Special_1,
     ///////////////////////////////////////////////////////
     PromToKnightCapture = PromToKnight | Capture,
     PromToBishopCapture = PromToBishop | Capture,
@@ -180,23 +181,25 @@ public:
         : bits(0) {}
 
     constexpr Move(Square origin, Square target, MoveType type)
-        : bits( (origin & 0x3F) | SHL((target & 0x3F), 6) | SHL((type & 0x0F), 12) ) {}
+        : bits( (origin & 0x3F) | ((target & 0x3F) << 6) | ((type & 0x0F) << 12) ) {}
 
     constexpr Square   origin() const { return Square(bits & 0x3F); }
-    constexpr Square   target() const { return Square(SHR(bits,6) & 0x3F); }
-    constexpr MoveType type()   const { return MoveType(SHR(bits,12) & 0x0F); }
+    constexpr Square   target() const { return Square((bits >> 6) & 0x3F); }
+    constexpr MoveType type()   const { return MoveType((bits >> 12) & 0x0F); }
 
-    constexpr bool isCapture()   const { return bits & SHL(1,14); }
+    constexpr bool isCapture()   const { return bits & (1<<14); }
     constexpr bool isCastle()    const { return type() & (QuietMove | Special_1); }
-    constexpr bool isPromotion() const { return bits & SHL(1,15); }
+    constexpr bool isPromotion() const { return bits & (1<<15); }
     constexpr bool isValid()     const { return bits; }
 
-    constexpr PieceType promoteTo() const {
-        return type() == PromToQueen ? Queen
-                : type() == PromToKnight ? Knight
-                  : type() == PromToRook ? Rook
-                    : type() == PromToBishop ? Bishop
+    inline PieceType promoteTo() const {
+        std::uint8_t toType = type() & ~(1<<2); // remove capture flag
+        return toType == PromToQueen ? Queen
+                : toType == PromToKnight ? Knight
+                  : toType == PromToRook ? Rook
+                    : toType == PromToBishop ? Bishop
                       : Empty;
+
     }
 
     constexpr bool operator==(Move other) const { return (bits & other.bits) & 0xFFFF;}
