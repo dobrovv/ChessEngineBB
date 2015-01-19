@@ -120,9 +120,9 @@ public:
         return std::max( std::abs( other.file() - file() ), std::abs( other.rank() - rank() ) );
     }
 
-    constexpr operator int() const { return ofst; }
+    //constexpr operator SquareEnum() const { return SquareEnum(ofst); }
     constexpr operator std::uint8_t() const { return ofst; }
-    constexpr operator SquareEnum() const { return SquareEnum(ofst); }
+
 
     inline Square& operator++() { ofst++; return *this; }
     constexpr bool operator==(SquareEnum other) { return ofst == other; }

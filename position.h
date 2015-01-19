@@ -53,7 +53,7 @@ public:
     inline Bitboard pieces(PieceColor color, PieceType type) const { return pieces_bb[color][type]; }
 
     template <PieceColor bySide>
-    Bitboard attackers(Square square);
+    Bitboard attackersOf(Square square);
 
     inline PieceColor sideToMove() const { return side;}
     inline void setSideToMove(PieceColor color) { side = color; }
@@ -63,8 +63,8 @@ public:
 
     //bool isOccupied(Square square) const { return is_set_bb(occupied_bb, square); }
 
-    template<PieceColor bySide>
-    bool isAttacked(Square square);
+    template<PieceColor color>
+    bool isAttackedBy(Square square);
 
     template<PieceColor color>
     bool isKingAttacked();
@@ -74,6 +74,9 @@ public:
 
     template<PieceColor color>
     bool isAbsolutelyPinned(Square to, Direction ignored = DIRECTION_CNT);
+
+    template<PieceColor color>
+    bool isEnPasCaptureLegal(Square origin);
 
     void movesForSide(PieceColor color, std::vector<Move>& moveList);
     //void movesForPawns(PieceColor color, std::vector<Move> &moveList);
@@ -111,71 +114,96 @@ inline Bitboard rayPieceSteps(Bitboard occupied, Square origin, Direction dir) {
     Bitboard blocker = ray & occupied;
     if (blocker) {
         Square blockerSquare = (dir < 3 || dir == 7)
-                ? bitscan_forward(blocker)      // direction is positive - scan forward
-                : bitscan_reverse(blocker);     // direction is nevatige - scan reverse
+                ? lsb_bb(blocker)      // direction is positive - scan forward
+                : msb_bb(blocker);     // direction is nevatige - scan reverse
         ray ^= directionStepsBB[blockerSquare][dir];
     }
     return ray;
 }
 
 template <PieceColor bySide>
-Bitboard Position::attackers(Square square) {
+Bitboard Position::attackersOf(Square square) {
+
+    constexpr PieceColor Attacker = bySide == White ? White : Black;
+    constexpr PieceColor Defender = bySide == White ? Black : White;
+
     Bitboard result = 0;
     // check pawns
-    result |= pawnCaptureStepsBB[!bySide][square] & pieces(bySide, Pawn);
+    result |= pawnCaptureStepsBB[Defender][square] & pieces(Attacker, Pawn);
     // check knights
-    result |= knightStepsBB[square] & pieces(bySide, Knight);
+    result |= knightStepsBB[square] & pieces(Attacker, Knight);
     // check kings
-    result |= kingStepsBB[square] & pieces(bySide, King);
+    result |= kingStepsBB[square] & pieces(Attacker, King);
+
+    const Bitboard Occupied = occupied();
+    const Bitboard attackerQueens  = pieces(Attacker, Queen);
+    const Bitboard attackerRooks   = pieces(Attacker, Rook);
+    const Bitboard attackerBishops = pieces(Attacker, Bishop);
+    const Bitboard attackerRayPieses = attackerQueens | attackerRooks | attackerBishops;
 
     // check ray pieces
     for (Direction dir = North; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
-        Bitboard attacker_one = rayPieceSteps(occupied(), square, dir) & colored(bySide);
-        if (attacker_one) {
+        Bitboard seenBy = rayPieceSteps(Occupied, square, dir) & attackerRayPieses;
+        if (seenBy) {
             if (dir == North || dir == East || dir == South || dir == West)
-                result |= attacker_one & (pieces(bySide, Rook) | pieces(bySide, Queen));
+                result |= seenBy & (attackerQueens | attackerRooks);
             else
-                result |= attacker_one & (pieces(bySide, Bishop) | pieces(bySide, Queen));
+                result |= seenBy & (attackerQueens | attackerBishops);
         }
 
     }
     return result;
 }
 
-template<PieceColor bySide>
-bool Position::isAttacked(Square square) {
+template<PieceColor color>
+bool Position::isAttackedBy(Square square) {
+
+    constexpr PieceColor Attacker = color == White ? White : Black;
+    constexpr PieceColor Defender = color == White ? Black : White;
+
     // check pawns
-    if (pawnCaptureStepsBB[!bySide][square] & pieces(bySide, Pawn))
+    if (pawnCaptureStepsBB[Defender][square] & pieces(Attacker, Pawn))
         return true;
     // check knights
-    if (knightStepsBB[square] & pieces(bySide, Knight) )
+    if (knightStepsBB[square] & pieces(Attacker, Knight) )
         return true;
+
+    const Bitboard Occupied = occupied();
+    const Bitboard attackerQueens  = pieces(Attacker, Queen);
+    const Bitboard attackerRooks   = pieces(Attacker, Rook);
+    const Bitboard attackerBishops = pieces(Attacker, Bishop);
+    const Bitboard attackerRayPieses = attackerQueens | attackerRooks | attackerBishops;
+
     // check ray pieces
     for (Direction dir = North; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
-        Bitboard attacker_one = rayPieceSteps(occupied(), square, dir) & colored(bySide);
-        if (attacker_one) {
+        Bitboard seenBy = rayPieceSteps(Occupied, square, dir) & attackerRayPieses;
+        if (seenBy) {
             if (dir == North || dir == East || dir == South || dir == West) {
-                if (attacker_one & (pieces(bySide, Rook) | pieces(bySide, Queen) ))
+                if (seenBy & (attackerQueens | attackerRooks))
                         return true;
             } else {
-                if (attacker_one & (pieces(bySide, Bishop) | pieces(bySide, Queen) ))
+                if (seenBy & (attackerQueens | attackerBishops))
                     return true;
             }
         }
     }
-    if (kingStepsBB[square] & pieces(bySide, King))
+
+    if (kingStepsBB[square] & pieces(Attacker, King))
         return true;
+
     return false;
 }
 
 template<PieceColor color>
 bool Position::isKingAttacked() {
-    Bitboard kings = pieces(color, King);
-    if (kings) {
-        Square kingSquare = bitscan_forward(kings);
-        return isAttacked<!color>(kingSquare);
-    }
-    return false;
+    constexpr PieceColor Ally  = color == White ? White : Black;
+    constexpr PieceColor Enemy = color == White ? Black : White;
+
+    Bitboard allyKings = pieces(Ally, King);
+    assert(allyKings != 0);
+    Square kingSquare = lsb_bb(allyKings);
+
+    return isAttackedBy<Enemy>(kingSquare);
 }
 
 template<PieceColor color>
@@ -188,7 +216,7 @@ bool Position::isPinned(Square pinned, Square to, Direction ignored) {
     reset_ref_bb(occupied_set, pinned);
     Bitboard ray = rayPieceSteps(occupied_set, to, dir) & colored(!color);
     if (ray) {
-        Square attackerSquare = pop_lsb(ray);
+        Square attackerSquare = pop_lsb_bb(ray);
         Piece attacker = pieceAt(attackerSquare);
         if (attacker.isQueen())
             return true;
@@ -202,12 +230,48 @@ bool Position::isPinned(Square pinned, Square to, Direction ignored) {
 
 template<PieceColor color>
 bool Position::isAbsolutelyPinned(Square pinned, Direction ignored) {
-    Bitboard kings = pieces(color, King);
-    if (kings) {
-        Square kingSquare = bitscan_forward(kings);
+    Bitboard kingBB = pieces(color, King);
+    if (kingBB) {
+        Square kingSquare = lsb_bb(kingBB);
         return isPinned<color>(pinned, kingSquare, ignored);
     }
     return false;
 }
+
+template<PieceColor color>
+bool Position::isEnPasCaptureLegal(Square origin) {
+    assert(state.epSquare != NOT_ENPASSANT);
+
+    Bitboard kingBB = pieces(color, King);
+    if (kingBB) {
+        Square kingSquare = lsb_bb(kingBB);
+        if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][state.epSquare]))
+            return false;
+        Square epPawnSquare = color == White
+                ? state.epSquare.prevRank()
+                : state.epSquare.nextRank();
+
+        Direction dir = fromToDirection[kingSquare][epPawnSquare];
+        if (dir != DIRECTION_CNT) {
+            Bitboard occupied_set = occupied();
+            reset_ref_bb(occupied_set, origin);
+            reset_ref_bb(occupied_set, epPawnSquare);
+            Bitboard ray = rayPieceSteps(occupied_set, kingSquare, dir) & colored(!color) & occupied_set;
+            if (ray) {
+                Square attackerSquare = pop_lsb_bb(ray);
+                Piece attacker = pieceAt(attackerSquare);
+                if (attacker.isQueen())
+                    return false;
+                if (attacker.isRook() && (dir == North || dir == East || dir == South || dir == West) )
+                    return false;
+                if (attacker.isBishop() && (dir == NorthEast || dir == SouthEast || dir == SouthWest || dir == NorthWest) )
+                    return false;
+            }
+        }
+    }
+
+    return true;
+}
+
 
 #endif // POSITION_H

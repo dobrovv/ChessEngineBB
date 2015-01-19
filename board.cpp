@@ -10,8 +10,10 @@ Board::Board()
 void Board::moveDo(Move move)
 {
 
-    MoveType moveType = move.type();
-    Piece piece = pieceAt(move.origin() );
+    const MoveType moveType = move.type();
+    const Square origin     = move.origin();
+    const Square target     = move.target();
+    Piece piece = pieceAt(origin);
 
     /* handle state changes */
 
@@ -21,40 +23,53 @@ void Board::moveDo(Move move)
     // set en passant square
     if (moveType == DoublePush) {
         state.epSquare = piece.color() == White
-                ? move.target().prevRank()
-                : move.target().nextRank();
+                ? target.prevRank()
+                : target.nextRank();
     } else {
         state.epSquare = NOT_ENPASSANT;
     }
 
     // handle half move clock for the fifty-move rule
     if (moveType == Capture || piece.isPawn()) {
-        ++state.halfmove_clock;
-    } else {
         state.halfmove_clock = 0;
+    } else {
+        ++state.halfmove_clock;
     }
 
     // handle castling rights
-    if (state.castle_rights) {
-        if (move.origin() == e1 ) { // white king moves
+    const Bitboard originBB   = SHL(1,origin);
+    static const Bitboard castleOriginSquares = SHL(1,e1) | SHL(1,e8)
+            | SHL(1,a1) | SHL(1,h1) | SHL(1,a8) | SHL(1,h8);
+
+    if (castleOriginSquares & originBB) {
+        if (origin == e1 ) { // white king moves
             state.castle_rights &= ~(CastlingFlagWK & CastlingFlagWQ);
-        } else if (move.origin() == e8) { // black king moves
+        } else if (origin == e8) { // black king moves
             state.castle_rights &= ~(CastlingFlagBK & CastlingFlagBQ);
-        } else if (move.origin() == a1) { // wq rook moves
+        } else if (origin == a1) { // wq rook moves
             state.castle_rights &= ~(CastlingFlagWQ);
-        } else if (move.origin() == h1) { // wk rook moves
+        } else if (origin == h1) { // wk rook moves
             state.castle_rights &= ~(CastlingFlagWK);
-        } else if (move.origin() == a8) { // bq rook moves
+        } else if (origin == a8) { // bq rook moves
             state.castle_rights &= ~(CastlingFlagBQ);
-        } else if (move.origin() == h8) { // bk rook moves
+        } else if (origin == h8) { // bk rook moves
             state.castle_rights &= ~(CastlingFlagBK);
         }
     }
 
     /* make positional changes */
     if (moveType == QuietMove) {
+//        const Bitboard originBB   = SHL(1,origin);
+//        const Bitboard targetBB   = SHL(1,target);
+//        const Bitboard origTrgtBB = originBB | targetBB;
+//        occupied_bb ^= origTrgtBB;
+//        colored_bb[piece.color()] ^= origTrgtBB;
+//        pieces_bb[piece.color()][piece.type()]   ^= origTrgtBB;
+//        piece_at[origin] = Piece(White, Empty);
+//        piece_at[target] = piece;
         removePiece(move.origin() );
         setPiece(piece, move.target() );
+
 
     } else if (moveType == Capture) {
         captured_pieses.push_back(pieceAt(move.target() )); // store captured piece

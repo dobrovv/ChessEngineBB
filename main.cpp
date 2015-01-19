@@ -8,21 +8,29 @@
 using namespace std;
 
 ostream& print_board(const Board& b, ostream& os = std::cout) {
-    for (Square i = a1; i <= h8; ++i) {
-        if ( i.file() == 0 )
-            os << '\n';
+    os << "+------------------------+\n";
+    for (Square i = a1; i < SQUARE_CNT; ++i) {
+        if ( i.file() == 0) {
+            os << "|                        |\n";
+            os << "|";
+        }
         Piece p = b.pieceAt(i.flipVertically());
         switch (p.type()) {
-        case Empty:  os << '.'; break;
-        case Pawn:   os << (p.color() == White ? "P" : "p"); break;
-        case Knight: os << (p.color() == White ? "N" : "n"); break;
-        case Bishop: os << (p.color() == White ? "B" : "b"); break;
-        case Rook:   os << (p.color() == White ? "R" : "r"); break;
-        case Queen:  os << (p.color() == White ? "Q" : "q"); break;
-        case King:   os << (p.color() == White ? "K" : "k"); break;
+        case Empty:  os << " . "; break;
+        case Pawn:   os << (p.color() == White ? " P " : " p "); break;
+        case Knight: os << (p.color() == White ? " N " : " n "); break;
+        case Bishop: os << (p.color() == White ? " B " : " b "); break;
+        case Rook:   os << (p.color() == White ? " R " : " r "); break;
+        case Queen:  os << (p.color() == White ? " Q " : " q "); break;
+        case King:   os << (p.color() == White ? " K " : " k "); break;
         default:;
         }
+        if ( i.file() == 7) {
+            os << "|\n";
+        }
     }
+    os << "|                        |\n";
+    os << "+------------------------+";
     return os;
 }
 
@@ -57,8 +65,6 @@ ostream& print_move(const Move& move, ostream& os = std::cout) {
 static int gDepth;
 uint64_t perft(Board& b, int depth){
     if (depth == 0) {
-        ++gDepth;
-        //cout << gDepth << endl;
         return 1;
     }
 
@@ -70,9 +76,13 @@ uint64_t perft(Board& b, int depth){
     for (Move move : moveList) {
 
         b.moveDo(move);
-        //print_board(b);
-        //cout << "\n";
-        //cin.get();
+//        if ( (b.isKingAttacked<White>() && b.sideToMove() == Black )
+//          || (b.isKingAttacked<Black>() && b.sideToMove() == White ))
+//        {
+//            print_board(b);
+//            cout << "\n";
+//            cin.get();
+//        }
         nodes += perft(b, depth - 1);
         b.moveUndo();
     }
@@ -80,10 +90,28 @@ uint64_t perft(Board& b, int depth){
 
 }
 
+void divide(Board& b, int depth) {
+
+    vector<Move> moveList;
+    b.movesForSide(b.sideToMove(), moveList);
+    for (Move move : moveList) {
+        uint64_t nodes = 0;
+        b.moveDo(move);
+        nodes += perft(b, depth - 1);
+        b.moveUndo();
+        print_move(move) << " " << nodes << "\n";
+    }
+}
+
 int main()
 {
     //Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     Board board = Board::fromFEN("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
+//    divide(board,4);
+//    return 0;
+
+    //Board board = Board::fromFEN("8/8/3p4/KPp4r/1R2Pp1k/8/6P1/8 b - e3");
+    print_board(board) << "\n";
     auto start_time = std::chrono::high_resolution_clock::now();
     uint64_t result = perft(board, 4);
     auto stop_time = std::chrono::high_resolution_clock::now();

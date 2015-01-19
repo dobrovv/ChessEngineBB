@@ -46,6 +46,28 @@ constexpr bool is_set_bb(Bitboard bboard, Square square) {
     return bboard & SHL(1,square);
 }
 
+template <Direction dir> inline
+Bitboard shift_bb(const Bitboard bboard) {
+
+    if (dir == NorthWest) {
+        return SHL(bboard & ~FileA_bb, 7);
+    } else if (dir == North) {
+        return SHL(bboard, 8);
+    } else if (dir == NorthEast) {
+        return SHL(bboard & ~FileH_bb, 9);
+    } else if (dir == East) {
+        return SHL(bboard & ~FileH_bb, 1);
+    } else if (dir == SouthEast) {
+        return SHR(bboard & ~FileH_bb, 7);
+    } else if (dir == South) {
+        return SHR(bboard, 8);
+    } else if (dir == SouthWest) {
+        return SHR(bboard & ~FileA_bb, 9);
+    } else if (dir == West) {
+        return SHR(bboard & ~FileA_bb, 1);
+    }
+}
+
 ///////////////////////////////////////////
 ////         Population Count          ////
 ///////////////////////////////////////////
@@ -54,49 +76,38 @@ constexpr bool is_set_bb(Bitboard bboard, Square square) {
 inline int popcount_bb(Bitboard bboard) {
     return __builtin_popcountll(bboard);
 }
-#else
-//This uses fewer arithmetic operations than any other known
-//implementation on machines with fast multiplication.
-//It uses 12 arithmetic operations, one of which is a multiply.
-const uint64_t m1  = 0x5555555555555555; //binary: 0101...
-const uint64_t m2  = 0x3333333333333333; //binary: 00110011..
-const uint64_t m4  = 0x0f0f0f0f0f0f0f0f; //binary:  4 zeros,  4 ones ...
-const uint64_t h01 = 0x0101010101010101; //the sum of 256 to the power of 0,1,2,3...
-inline int popcount_bb(Bitboard x) {
-    x -= (x >> 1) & m1;             //put count of each 2 bits into those 2 bits
-    x = (x & m2) + ((x >> 2) & m2); //put count of each 4 bits into those 4 bits
-    x = (x + (x >> 4)) & m4;        //put count of each 8 bits into those 8 bits
-    return (x * h01)>>56;  //returns left 8 bits of x + (x<<8) + (x<<16) + (x<<24) + ...
-}
 #endif
+
 
 ///////////////////////////////////////////
 ////            Bitscans               ////
 ///////////////////////////////////////////
 #ifdef __GNUC__
-inline Square bitscan_forward(Bitboard bboard) {
+inline Square lsb_bb(Bitboard bboard) {
     assert(bboard != 0);
     return __builtin_ctzll(bboard);
 }
 
-inline Square bitscan_reverse(Bitboard bboard) {
+inline Square msb_bb(Bitboard bboard) {
     assert(bboard != 0);
     return __builtin_clzll(bboard) ^ 63;
 }
 #endif
 
 
-inline Square pop_lsb(Bitboard &bboard) {
+inline Square pop_lsb_bb(Bitboard &bboard) {
     assert(bboard != 0);
-    Square square = bitscan_forward(bboard);
+    Square square = lsb_bb(bboard);
     bboard &= bboard - 1;
     return square;
 }
 
-/*inline Square pop_msb(Bitboard &bboard) {
+/*inline Square pop_msb_bb(Bitboard &bboard) {
     Square square = bitscan_reverse(bboard);
     bboard &= bboard - 1;   // what comes here ?
     return square;
 }*/
+
+#define foreach_pop_lsb(square, bboard) for (Square square; (bboard) && ((square = pop_lsb_bb(bboard)) || true);)
 
 #endif // BITBOARD_H

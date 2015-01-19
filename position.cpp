@@ -57,165 +57,160 @@ void Position::removePiece(Square square)
 
 void Position::movesForSide(PieceColor color, std::vector<Move> &moveList)
 {
-    /*for (Square sq = a1; sq < SQUARE_CNT; ++sq ) {
-        if (color == White)
-            movesToSquare<White>(sq, moveList);
-        else
-            movesToSquare<Black>(sq, moveList);
-    }
-    return;*/
 
     if (color == White) {
-        movesForPawns<White>(moveList);
-        movesForKnights<White>(moveList);
-        movesForRayPieces<White, Bishop>(moveList);
-        movesForRayPieces<White, Rook>(moveList);
-        movesForRayPieces<White, Queen>(moveList);
-        movesForKing<White>(moveList);
+        if (isKingAttacked<White>() ) {
+            movesUnderCheck<White>(moveList);
+        } else {
+            movesForPawns<White>(moveList);
+            movesForKnights<White>(moveList);
+            movesForRayPieces<White, Bishop>(moveList);
+            movesForRayPieces<White, Rook>(moveList);
+            movesForRayPieces<White, Queen>(moveList);
+            movesForKing<White>(moveList);
+        }
     } else {
-        movesForPawns<Black>(moveList);
-        movesForKnights<Black>(moveList);
-        movesForRayPieces<Black, Bishop>(moveList);
-        movesForRayPieces<Black, Rook>(moveList);
-        movesForRayPieces<Black, Queen>(moveList);
-        movesForKing<Black>(moveList);
+        if (isKingAttacked<Black>() ) {
+            movesUnderCheck<Black>(moveList);
+        } else {
+            movesForPawns<Black>(moveList);
+            movesForKnights<Black>(moveList);
+            movesForRayPieces<Black, Bishop>(moveList);
+            movesForRayPieces<Black, Rook>(moveList);
+            movesForRayPieces<Black, Queen>(moveList);
+            movesForKing<Black>(moveList);
+        }
     }
 }
 
-// TODO: add enpassant capture if it was a double pushed pawn that gave the check
 template<PieceColor color>
 void Position::movesUnderCheck(std::vector<Move>& moveList) {
     Bitboard kings = pieces(color, King);
     if (kings) {
-        Square kingSquare = bitscan_forward(kings);
-        Bitboard attacker_set = attackers<!color>(kingSquare);
+        Square kingSquare = lsb_bb(kings);
+        Bitboard attacker_set = attackersOf<!color>(kingSquare);
+        assert(attacker_set != 0);
+
         if (popcount_bb(attacker_set) > 1) {
             return movesForKing<color>(moveList);   // time to panic
         }
-        assert(attacker_set != 0);
 
-        Direction dir = fromToDirection[bitscan_forward(attacker_set)];
+        Square attackerSquare = lsb_bb(attacker_set);
+        if (state.epSquare != NOT_ENPASSANT) {
+            // check if we are attacked by a double pusshed pawn
+            Square doublePawn = color == White
+                    ? state.epSquare.prevRank()
+                    : state.epSquare.nextRank();
+            if (attackerSquare  == doublePawn){  // add en passnat capture
+                Bitboard pawns = pawnCaptureStepsBB[!color][state.epSquare] & pieces(color, Pawn);
+                while (pawns) {
+                    Square pawn = pop_lsb_bb(pawns);
+                    if (isAbsolutelyPinned<color>(pawn) == false) {
+                        moveList.emplace_back(pawn, state.epSquare, CaptureEnPas);
+                    }
+                }
+            }
+        }
+
+        Direction dir = fromToDirection[kingSquare][attackerSquare];
         Bitboard defend_ray = directionStepsBB[kingSquare][dir];
         while (defend_ray) {
-            Bitboard target = pop_lsb(defend_ray);
+            Bitboard target = pop_lsb_bb(defend_ray);
             movesToSquare<color>(target, moveList);
         }
     }
 }
 
-//void Position::movesForPawns(PieceColor color, std::vector<Move> &moveList){
-//    if (color == White) {
-//        movesForPawns<White>(moveList);
-//    } else {
-//        movesForPawns<Black>(moveList);
-//    }
-//}
-
 template<PieceColor color>
 void Position::movesForPawns(std::vector<Move> &moveList)
 {
-    Square target;
-    Square origin;
-    Bitboard promoted;
+    constexpr PieceColor Ally  = color == White ? White : Black;
+    constexpr PieceColor Enemy = color == White ? Black : White;
 
-    Bitboard pushed = pawnsPush<color>();
-    promoted = color == White
-            ? pushed & Rank8_bb
-            : pushed & Rank1_bb;
+    constexpr Direction  Forward   = color == White ? North : South;
+    constexpr Direction  ForwardRight = color == White ? NorthEast : SouthWest;
+    constexpr Direction  ForwardLeft  = color == White ? NorthWest : SouthEast;
+
+    constexpr Bitboard   FirstPush_bb = color == White ? Rank3_bb : Rank6_bb;
+    constexpr Bitboard   PromotionRank_bb = color == White ? Rank8_bb : Rank1_bb;
+
+    const Bitboard notOccupied = ~occupied();
+    const Bitboard allyPawns = pieces(Ally,Pawn);
+    const Bitboard enemyPieces = colored(Enemy);
+
+    Square origin;
+
+    Bitboard pushed       = shift_bb<Forward>(allyPawns) & notOccupied;
+    Bitboard doublePushed = shift_bb<Forward>(pushed & FirstPush_bb) & notOccupied;
+    Bitboard promoted = pushed & PromotionRank_bb;
     pushed ^= promoted;
 
-    while (promoted) {
-        target = pop_lsb(promoted);
-        origin = color == White
-                ? target.prevRank()
-                : target.nextRank();
-        if (isAbsolutelyPinned<color>(origin, color == White ? North : South) == false) {
-            moveList.emplace_back(origin, target, PromToQueen); moveList.emplace_back(origin, target, PromToKnight);
-            moveList.emplace_back(origin, target, PromToRook); moveList.emplace_back(origin, target, PromToBishop);
-        }
-    }
-    while (pushed) {
-        target = pop_lsb(pushed);
-        origin = color == White
-                ? target.prevRank()
-                : target.nextRank();
-        if (isAbsolutelyPinned<color>(origin, color == White ? North : South) == false) {
+    foreach_pop_lsb(target, pushed) {
+        origin = Ally == White ? target.prevRank() : target.nextRank();
+        if (isAbsolutelyPinned<Ally>(origin, Forward) == false) {
             moveList.emplace_back(origin, target, QuietMove);
         }
     }
 
-    Bitboard doublePushed = pawnsPushDouble<color>();
-
-    while (doublePushed) {
-        target = pop_lsb(doublePushed);
-        origin = color == White
-                ? target.prevRank().prevRank()
-                : target.nextRank().nextRank();
-        if (isAbsolutelyPinned<color>(origin, color == White ? North : South) == false) {
+    foreach_pop_lsb(target, doublePushed) {
+        origin = Ally == White ? target.prevRank().prevRank() : target.nextRank().nextRank();
+        if (isAbsolutelyPinned<Ally>(origin, Forward) == false) {
             moveList.emplace_back(origin, target, DoublePush);
         }
     }
 
-    Bitboard eastCapture = pawnsCaptureEast<color>();
-    promoted = color == White
-            ? eastCapture & Rank8_bb
-            : eastCapture & Rank1_bb;
-    eastCapture ^= promoted;
+    foreach_pop_lsb(target, promoted) {
+        origin = Ally == White ? target.prevRank() : target.nextRank();
+        if (isAbsolutelyPinned<Ally>(origin, Forward) == false) {
+            moveList.emplace_back(origin, target, PromToQueen); moveList.emplace_back(origin, target, PromToKnight);
+            moveList.emplace_back(origin, target, PromToRook); moveList.emplace_back(origin, target, PromToBishop);
+        }
+    }
 
-    while (promoted) {
-        target = pop_lsb(promoted);
-        origin = color == White
-                ? target.prevDiagMain()
-                : target.nextDiagAnti();
-        if (isAbsolutelyPinned<color>(origin, East) == false) {
+    Bitboard rightCapture = shift_bb<ForwardRight>(allyPawns) & enemyPieces;
+    Bitboard rightPromotion = rightCapture & PromotionRank_bb;
+    rightCapture ^= rightPromotion;
+
+    foreach_pop_lsb(target, rightCapture) {
+        origin = Ally == White ? target.prevDiagMain() : target.nextDiagMain();
+        if (isAbsolutelyPinned<Ally>(origin, ForwardRight) == false) {
+            moveList.emplace_back(origin, target, Capture);
+        }
+    }
+
+    foreach_pop_lsb(target, rightPromotion) {
+        origin = Ally == White ? target.prevDiagMain() : target.nextDiagMain();
+        if (isAbsolutelyPinned<Ally>(origin, ForwardRight) == false) {
             moveList.emplace_back(origin, target, PromToQueenCapture); moveList.emplace_back(origin, target, PromToKnightCapture);
             moveList.emplace_back(origin, target, PromToRookCapture); moveList.emplace_back(origin, target, PromToBishopCapture);
         }
     }
 
-    while (eastCapture) {
-        target = pop_lsb(eastCapture);
-        origin = color == White
-                ? target.prevDiagMain()
-                : target.nextDiagAnti();
-        if (isAbsolutelyPinned<color>(origin, East) == false) {
+    Bitboard leftCapture   = shift_bb<ForwardLeft>(allyPawns) & enemyPieces;
+    Bitboard leftPromotion = leftCapture & PromotionRank_bb;
+    leftCapture ^= leftPromotion;
+
+    foreach_pop_lsb(target, leftCapture) {
+        origin = Ally == White ? target.prevDiagAnti() : target.nextDiagAnti();
+        if (isAbsolutelyPinned<Ally>(origin, ForwardLeft) == false) {
             moveList.emplace_back(origin, target, Capture);
         }
     }
 
-    Bitboard westCapture = pawnsCaptureWest<color>();
-    promoted = color == White
-            ? westCapture & Rank8_bb
-            : westCapture & Rank1_bb;
-    westCapture ^= promoted;
-
-    while (promoted) {
-        target = pop_lsb(promoted);
-        origin = color == White
-                ? target.prevDiagAnti()
-                : target.nextDiagMain();
-        if (isAbsolutelyPinned<color>(origin, West) == false) {
+    foreach_pop_lsb(target, leftPromotion) {
+        origin = Ally == White ? target.prevDiagAnti() : target.nextDiagAnti();
+        if (isAbsolutelyPinned<Ally>(origin, ForwardLeft) == false) {
             moveList.emplace_back(origin, target, PromToQueenCapture); moveList.emplace_back(origin, target, PromToKnightCapture);
             moveList.emplace_back(origin, target, PromToRookCapture); moveList.emplace_back(origin, target, PromToBishopCapture);
-        }
-    }
-
-    while (westCapture) {
-        target = pop_lsb(westCapture);
-        origin = color == White
-                ? target.prevDiagAnti()
-                : target.nextDiagMain();
-        if (isAbsolutelyPinned<color>(origin, West) == false) {
-            moveList.emplace_back(origin, target, Capture);
         }
     }
 
     // En passant handling
     if (state.epSquare != NOT_ENPASSANT) {
-        Bitboard pawns_set = pawnCaptureStepsBB[!color][state.epSquare] & pieces(color, Pawn);
-        while (pawns_set) {
-            Square origin = pop_lsb(pawns_set);
-            if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][state.epSquare]) == false) {
+        Bitboard pawns_set = pawnCaptureStepsBB[Enemy][state.epSquare] & allyPawns;
+        foreach_pop_lsb(origin, pawns_set) {
+            //if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][state.epSquare]) == false) {
+            if (isEnPasCaptureLegal<Ally>(origin)) {
                 moveList.emplace_back(origin, state.epSquare, CaptureEnPas);
             }
         }
@@ -225,29 +220,27 @@ void Position::movesForPawns(std::vector<Move> &moveList)
 template<PieceColor color>
 void Position::movesForKnights(std::vector<Move>& moveList)
 {
-    Bitboard knights = (color == White)
-            ? pieces(White, Knight)
-            : pieces(Black, Knight);
+    constexpr PieceColor Ally  = color == White ? White : Black;
+    constexpr PieceColor Enemy = color == White ? Black : White;
 
-    while (knights) {
-        Square origin = pop_lsb(knights);
-        Bitboard quietMoves = knightStepsBB[origin] & ~occupied();
-        if (isAbsolutelyPinned<color>(origin) )
+    const Bitboard notOccupied = ~occupied();
+    const Bitboard enemyPieces = colored(Enemy);
+
+    Bitboard allyKnights = pieces(Ally, Knight);
+
+    foreach_pop_lsb(origin, allyKnights) {
+        if (isAbsolutelyPinned<Ally>(origin) )
             continue;
 
-        while (quietMoves) {
-            Square target = pop_lsb(quietMoves);
+        const Bitboard stepsOn = knightStepsBB[origin];
+
+        Bitboard quietMoves = stepsOn & notOccupied;
+        foreach_pop_lsb(target, quietMoves)
             moveList.emplace_back(origin, target, QuietMove);
-        }
 
-        Bitboard captureMoves = (color==White)
-                ? colored(Black) & knightStepsBB[origin]
-                : colored(White) & knightStepsBB[origin];
-
-        while (captureMoves) {
-            Square target = pop_lsb(captureMoves);
+        Bitboard captureMoves = stepsOn & enemyPieces;
+        foreach_pop_lsb(target, captureMoves)
             moveList.emplace_back(origin, target, Capture);
-        }
     }
 }
 
@@ -256,37 +249,42 @@ void Position::movesForRayPieces(std::vector<Move>& moveList) {
 
     assert(pieceType == Queen || pieceType == Rook || pieceType == Bishop);
 
-    Bitboard pieces_set = (color == White)
-            ? pieces(White, pieceType)
-            : pieces(Black, pieceType);
+    constexpr PieceColor Ally  = color == White ? White : Black;
+    constexpr PieceColor Enemy = color == White ? Black : White;
 
-    while (pieces_set) {
-        Square origin = pop_lsb(pieces_set);
-        Direction dir = (pieceType == Bishop)
-                ? NorthEast         // Start with diagolnal direction eg bishop
-                : North;            // Start with orthogonal direction eg queen and rook
+    constexpr Direction DirectionStart = (pieceType == Bishop)
+            ? NorthEast         // Start with diagolnal direction eg bishop
+            : North;            // Start with orthogonal direction eg queen and rook
 
-        while (dir < DIRECTION_CNT) {
-            if (isAbsolutelyPinned<color>(origin, dir) == false ) {
-                Bitboard steps = rayPieceSteps(occupied(), origin, dir);
-                Bitboard capture = steps & occupied();
-                if (capture) {
-                    Square captureTarget =  bitscan_forward(capture);
-                    // forward/reverse doesn't matter as there should be only one capture
-                    //if (pieceAt(captureTarget).color() != color)
-                    if (capture & colored(!color))
-                        moveList.emplace_back(origin, captureTarget, Capture);
-                    reset_ref_bb(steps, captureTarget); // delete captureTarget
-                }
-                while(steps) {
-                    Square target = pop_lsb(steps);
-                    moveList.emplace_back(origin, target, QuietMove);
-                }
+    constexpr std::uint8_t DirectionIncrement= (pieceType == Queen) // Rotate direction
+                    ? 1                                          // by 45° for queen
+                    : 2;                                         // by 90° for rook and bishop
+
+    const Bitboard Occupied = occupied();
+    const Bitboard enemyPieces = colored(Enemy);
+
+    Bitboard allyRayPieces = pieces(Ally, pieceType);
+
+    foreach_pop_lsb(origin, allyRayPieces) {
+
+        for (Direction dir = DirectionStart; dir < DIRECTION_CNT; dir = Direction(dir + DirectionIncrement) ) {
+
+            if (isAbsolutelyPinned<Ally>(origin, dir))
+                continue;
+
+            Bitboard stepsOn = rayPieceSteps(Occupied, origin, dir);
+            Bitboard stepsOnPiece = stepsOn & Occupied;
+
+            if (stepsOnPiece) {
+                Square target = lsb_bb(stepsOnPiece);
+                if (stepsOnPiece & enemyPieces)
+                    moveList.emplace_back(origin, target, Capture);
+                reset_ref_bb(stepsOn, target); // delete enemy piece/our piece from stepsOn
             }
-            // Rotate direction
-            dir = (pieceType == Queen)
-                    ? Direction(dir+1)  // by 45° for queen
-                    : Direction(dir+2); // by 90° for rook and bishop
+
+            foreach_pop_lsb(target, stepsOn) {
+                moveList.emplace_back(origin, target, QuietMove);
+            }
         }
     }
 }
@@ -294,73 +292,70 @@ void Position::movesForRayPieces(std::vector<Move>& moveList) {
 template<PieceColor color>
 void Position::movesForKing(std::vector<Move> &moveList)
 {
-    Bitboard king_set = pieces(color, King);
-    Square origin;
-    if (king_set) {
+    constexpr PieceColor Ally   = color == White ? White : Black;
+    constexpr PieceColor Enemy  = color == White ? Black : White;
 
-        origin = bitscan_forward(king_set);
-        Bitboard steps = kingStepsBB[origin];
-        steps ^= steps & colored(color);    // delete same colored pieces subset
-        Bitboard  capture = steps & colored(!color);
-        steps ^= capture;   // delete captures subset
+    // castling
+    constexpr CastlingRights AllyCastleQSide = color == White ? CastlingFlagWQ : CastlingFlagBQ;
+    constexpr CastlingRights AllyCastleKSide = color == White ? CastlingFlagWK : CastlingFlagBK;
+    constexpr Square RookQSide   = color == White ? Square(a1) : Square(a8);
+    constexpr Square RookKSide   = color == White ? Square(h1) : Square(h8);
+    constexpr Square TargetQSide = color == White ? Square(c1) : Square(c8);
+    constexpr Square TargetKSide = color == White ? Square(g1) : Square(g8);
 
-        while (capture) {
-            Square target = pop_lsb(capture);
-            if (isAttacked<!color>(target) == false )
-                moveList.emplace_back(origin, target, Capture);
-        }
+    Bitboard allyKings = pieces(Ally, King);
 
-        while (steps) {
-            Square target = pop_lsb(steps);
-            if (isAttacked<!color>(target) == false )
-                moveList.emplace_back(origin, target, QuietMove);
-        }
+    assert (allyKings != 0);
 
-        // castling
-        const Square RookQSide   = color == White ? Square(a1) : Square(a8);
-        const Square targetQSide = color == White ? Square(c1) : Square(c8);
+    const Bitboard Occupied = occupied();
+    const Square origin = lsb_bb(allyKings);
 
-        bool canQCastle = color == White
-                ? state.castle_rights & CastlingFlagWQ
-                : state.castle_rights & CastlingFlagBQ;
 
-        const Square RookKSide   = color == White ? Square(h1) : Square(h8);
-        const Square targetKSide = color == White ? Square(g1) : Square(g8);
+    Bitboard stepsOn = kingStepsBB[origin];
+    stepsOn ^= stepsOn & colored(Ally);    // delete same colored pieces
 
-        bool canKCastle = color == White
-                ? state.castle_rights & CastlingFlagWK
-                : state.castle_rights & CastlingFlagBK;
+    Bitboard  captures = stepsOn & colored(Enemy);
+    stepsOn ^= captures;   // delete captures subset
 
-        if (canQCastle) {
-            Bitboard rookQSteps = rayPieceSteps(occupied(), RookQSide, East);
-            if (popcount_bb(rookQSteps) == 4) {
-                pop_lsb(rookQSteps);   // unused - not on the kings path
-                while (rookQSteps) {
-                    Square sq = pop_lsb(rookQSteps);
-                    if (isAttacked<!color>(sq) ) {
-                        canQCastle = false;
-                        break;
-                    }
-                }
-                if (canQCastle) {
-                    moveList.emplace_back(origin, targetQSide, CastleQSide);
+    foreach_pop_lsb(target, captures) {
+        if (isAttackedBy<Enemy>(target) == false )
+            moveList.emplace_back(origin, target, Capture);
+    }
+
+    foreach_pop_lsb(target, stepsOn) {
+        if (isAttackedBy<Enemy>(target) == false )
+            moveList.emplace_back(origin, target, QuietMove);
+    }
+
+    bool canCastleQSide =  state.castle_rights & AllyCastleQSide;
+    if (canCastleQSide) {
+        Bitboard kingStepsOn = rayPieceSteps(Occupied, RookQSide, East);
+        if (popcount_bb(kingStepsOn) == 4) {
+
+            pop_lsb_bb(kingStepsOn);   // unused - not on the kings way
+            foreach_pop_lsb(square, kingStepsOn) {
+                if (isAttackedBy<Enemy>(square) ) {
+                    canCastleQSide = false; break;
                 }
             }
+            if (canCastleQSide)
+                moveList.emplace_back(origin, TargetQSide, CastleQSide);
         }
+    }
 
-        if (canKCastle) {
-            Bitboard rookKSteps = rayPieceSteps(occupied(), RookKSide, West);
-            if (popcount_bb(rookKSteps) == 3) {
-                while (rookKSteps) {
-                    Square sq = pop_lsb(rookKSteps);
-                    if (isAttacked<!color>(sq)) {
-                        canKCastle = false;
-                        break;
-                    }
+    bool canCastleKSide = state.castle_rights & AllyCastleKSide;
+    if (canCastleKSide) {
+        Bitboard kingStepsOn = rayPieceSteps(Occupied, RookKSide, West);
+        if (popcount_bb(kingStepsOn) == 3) {
+
+            foreach_pop_lsb(square, kingStepsOn) {
+                if (isAttackedBy<Enemy>(square)) {
+                    canCastleKSide = false;
+                    break;
                 }
-                if (canKCastle) {
-                    moveList.emplace_back(origin, targetKSide, CastleKSide);
-                }
+            }
+            if (canCastleKSide) {
+                moveList.emplace_back(origin, TargetKSide, CastleKSide);
             }
         }
     }
@@ -369,32 +364,39 @@ void Position::movesForKing(std::vector<Move> &moveList)
 // TODO: add castling as a way to reach the target square
 template<PieceColor color>
 void Position::movesToSquare(Square target, std::vector<Move>& moveList) {
-    Bitboard pieces_set = attackers<color>(target);
 
-    if (is_set_bb(colored(color), target)) {
-        //pieces_set &= ~colored(color); // remove same colored pieces
+    constexpr PieceColor Ally   = color == White ? White : Black;
+    constexpr PieceColor Enemy  = color == White ? Black : White;
+
+    const Bitboard allyPieces = colored(Ally);
+    const Bitboard enemyPieces = colored(Enemy);
+    const Bitboard allyPawns = pieces(Ally,Pawn);
+
+    Bitboard seenBy = attackersOf<color>(target);
+
+    if (is_set_bb(allyPieces, target))
         return; // nothing to do here then
-    }
-    if (!is_set_bb(colored(!color), target) && state.epSquare != target) { // target is not an opponent's piece nor the en passant square
 
-        pieces_set &= ~(pieces_set & pieces(color, Pawn)); // remove pawn captures because target is not a piece
+    if (!is_set_bb(enemyPieces, target) && state.epSquare != target) { // target is not an opponent's piece nor the en passant square
 
-        //add the pawn that can move to the target square
+        seenBy &= ~(seenBy & allyPawns); // remove pawn captures because target is not a piece
+
+        //add a pawn that can move to the target square
         if (is_set_bb(pawnsPush<color>(), target)) {
             Square origin = color == White ? target.prevRank() : target.nextRank();
-            set_ref_bb(pieces_set, origin);
+            set_ref_bb(seenBy, origin);
         }
 
         //add double pushed pawn that can move to target square
         if (is_set_bb(pawnsPushDouble<color>(), target)) {
             Square origin = color == White ? target.prevRank().prevRank() : target.nextRank().nextRank();
             //moveList.emplace_back(origin, target, DoublePush);
-            set_ref_bb(pieces_set, origin);
+            set_ref_bb(seenBy, origin);
         }
     }
 
-    while (pieces_set) {
-        Square origin = pop_lsb(pieces_set);
+    while (seenBy) {
+        Square origin = pop_lsb_bb(seenBy);
         Piece pieceOrig = pieceAt(origin);
         Piece pieceTrgt = pieceAt(target);
 
@@ -421,7 +423,7 @@ void Position::movesToSquare(Square target, std::vector<Move>& moveList) {
                 }
             }
         } else if (pieceOrig.isKing() ) {
-            if (isAttacked<!color>(target)) {
+            if (isAttackedBy<!color>(target)) {
                 moveList.emplace_back(origin, target, pieceTrgt.isEmpty() ? QuietMove : Capture );
             }
         } else { // knight, bishop, rook, queen
@@ -517,37 +519,37 @@ struct GlobalsInitializer {
 template<PieceColor color>
 Bitboard Position::pawnsPush() {
     if (color == White) {
-        return SHL(pieces(White,Pawn), 8) & ~occupied();
+        return shift_bb<North>(pieces(White,Pawn)) & ~occupied();
     } else {
-        return SHR(pieces(Black,Pawn), 8) & ~occupied();
+        return shift_bb<South>(pieces(Black,Pawn)) & ~occupied();
     }
 }
 
 template<PieceColor color>
 Bitboard Position::pawnsPushDouble() {
     if (color == White) {
-        Bitboard firstPush = SHL(pieces(White,Pawn) & Rank2_bb, 8) & ~occupied();
-        return SHL(firstPush, 8) & ~occupied();
+        Bitboard firstPush = shift_bb<North>(pieces(White,Pawn) & Rank2_bb) & ~occupied();
+        return shift_bb<North>(firstPush) & ~occupied();
     } else {
-        Bitboard firstPush = SHR(pieces(Black,Pawn) & Rank7_bb, 8) & ~occupied();
-        return SHR(firstPush, 8) & ~occupied();
+        Bitboard firstPush = shift_bb<South>(pieces(Black,Pawn) & Rank7_bb) & ~occupied();
+        return shift_bb<South>(firstPush) & ~occupied();
     }
 }
 
 template<PieceColor color>
 Bitboard Position::pawnsCaptureEast() {
     if (color == White) {
-        return SHL((pieces(White,Pawn) & ~FileH_bb), 9) & colored(Black);
+        return shift_bb<NorthEast>(pieces(White,Pawn)) & colored(Black);
     } else {
-        return SHR((pieces(Black,Pawn) & ~FileH_bb), 7) & colored(White);
+        return shift_bb<SouthEast>(pieces(Black,Pawn)) & colored(White);
     }
 }
 
 template<PieceColor color>
 Bitboard Position::pawnsCaptureWest() {
     if (color == White) {
-        return SHL((pieces(White,Pawn) & ~FileA_bb), 7) & colored(Black);
+        return shift_bb<NorthWest>(pieces(White,Pawn)) & colored(Black);
     } else {
-        return SHR((pieces(Black,Pawn) & ~FileA_bb), 9) & colored(White);
+        return shift_bb<SouthWest>(pieces(Black,Pawn)) & colored(White);
     }
 }
