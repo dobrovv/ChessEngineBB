@@ -1,5 +1,6 @@
 #include <iostream>
 #include <string>
+#include <sstream>
 #include <thread>
 #include <chrono>
 
@@ -16,6 +17,34 @@ ostream& print_board(const Board& b, ostream& os = std::cout) {
         }
         Piece p = b.pieceAt(i.flipVertically());
         switch (p.type()) {
+            case Empty:  os << " . "; break;
+            case Pawn:   os << (p.color() == White ? " P " : " p "); break;
+            case Knight: os << (p.color() == White ? " N " : " n "); break;
+            case Bishop: os << (p.color() == White ? " B " : " b "); break;
+            case Rook:   os << (p.color() == White ? " R " : " r "); break;
+            case Queen:  os << (p.color() == White ? " Q " : " q "); break;
+            case King:   os << (p.color() == White ? " K " : " k "); break;
+            default:;
+        }
+        if ( i.file() == 7) {
+            os << "|\n";
+        }
+    }
+    os << "|                        |\n";
+    os << "+------------------------+";
+    return os;
+}
+
+// prints board with row ranks and column files
+ostream& print_board_with_files(const Board& b, ostream& os = std::cout) {
+    os << " +------------------------+\n";
+    for (Square i = a1; i < SQUARE_CNT; ++i) {
+        if (i.file() == 0) {
+            os << " |                        |\n";
+            os << (int)i.flipVertically().rank() + 1 << "|";
+        }
+        Piece p = b.pieceAt(i.flipVertically());
+        switch (p.type()) {
         case Empty:  os << " . "; break;
         case Pawn:   os << (p.color() == White ? " P " : " p "); break;
         case Knight: os << (p.color() == White ? " N " : " n "); break;
@@ -25,12 +54,13 @@ ostream& print_board(const Board& b, ostream& os = std::cout) {
         case King:   os << (p.color() == White ? " K " : " k "); break;
         default:;
         }
-        if ( i.file() == 7) {
-            os << "|\n";
+        if (i.file() == 7) {
+            os <<  "|" << (int)i.flipVertically().rank() + 1  << "\n" ;
         }
     }
-    os << "|                        |\n";
-    os << "+------------------------+";
+    os << " |                        |\n";
+    os << " +------------------------+\n";
+    os << "   a  b  c  d  e  f  g  h  ";
     return os;
 }
 
@@ -52,14 +82,53 @@ ostream& print_square(const Square& square, ostream& os = std::cout) {
     return os << symbolic;
 }
 
+//print move in UCI notation
 ostream& print_move(const Move& move, ostream& os = std::cout) {
-    print_square(move.origin());
-    os << (move.isCapture() ? "x": "-");
-    print_square(move.target());
-    if (move.type() == CaptureEnPas){
-        os << " e.p.";
+    print_square(move.origin(), os);
+    //os << (move.isCapture() ? "x": "-");
+    print_square(move.target(), os);
+    if (move.isPromotion()) {
+        assert(move.promoteTo() != Empty);
+        switch (move.promoteTo()) {
+            case Queen: os << "q"; break;
+            case Knight: os << "n"; break;
+            case Bishop: os << "b"; break;
+            case Rook: os << "r"; break;
+        }
     }
     return os;
+}
+
+/*Verifies that the specified move in moveStr as UCI notation string can be played and returns a move of type Move  
+  TODO: verify? return an invalid move if multiple moves are possible with the same string*/
+Move verify_move(Board& b, std::string moveStr) {
+    bool isOk = false;
+    Move retMove {}; // invalid
+    vector<Move> moveList;
+    moveList.reserve(256);
+    
+    b.movesForSide(b.sideToMove(), moveList);
+
+    
+    for (Move move : moveList) {
+        std::stringstream ss;
+        print_move(move, ss);
+        if (moveStr == ss.str()) {
+            retMove = move;
+            return retMove;
+        }
+    }
+
+    return retMove;
+}
+
+Move randomMove(Board & b) {
+    vector<Move> moveList;
+    b.movesForSide(b.sideToMove(), moveList);
+    if (moveList.size() > 0)
+        return moveList[rand() % moveList.size()];
+    else
+        return Move();
 }
 
 static int gDepth;
@@ -76,13 +145,6 @@ uint64_t perft(Board& b, int depth){
     for (Move move : moveList) {
 
         b.moveDo(move);
-//        if ( (b.isKingAttacked<White>() && b.sideToMove() == Black )
-//          || (b.isKingAttacked<Black>() && b.sideToMove() == White ))
-//        {
-//            print_board(b);
-//            cout << "\n";
-//            cin.get();
-//        }
         nodes += perft(b, depth - 1);
         b.moveUndo();
     }
@@ -90,36 +152,142 @@ uint64_t perft(Board& b, int depth){
 
 }
 
-void divide(Board& b, int depth) {
+uint64_t divide(Board& b, int depth) {
 
     vector<Move> moveList;
+    uint64_t sumNodes = 0;
     b.movesForSide(b.sideToMove(), moveList);
     for (Move move : moveList) {
         uint64_t nodes = 0;
         b.moveDo(move);
         nodes += perft(b, depth - 1);
+        sumNodes += nodes;
         b.moveUndo();
-        print_move(move) << " " << nodes << "\n";
+        print_move(move) << ": " << nodes << "\n";
     }
+
+    return sumNodes;
+}
+
+// reads the command input and returns each token
+// TODO: split string by any whitespace
+vector<string> getCommandArgs(void) {
+    string cmdArgs;
+    
+    std::getline(std::cin, cmdArgs);
+    istringstream iss(cmdArgs);
+
+    vector<string> tokens;
+    copy(istream_iterator<string>(iss),
+        istream_iterator<string>(),
+        back_inserter(tokens));
+
+    return tokens;
+}
+// apply moves in an UCI notation to the board 'startPos'
+Board getBoardFromMoves(vector<string> moves, Board startPos = Board::startpos()) {
+    
+    for(string move : moves) {
+        Move nextMove = verify_move(startPos, move);
+        if (nextMove.isValid()) {
+            startPos.moveDo(nextMove);
+        }
+        else {
+            cout << "Invalid move. " << move << endl;
+            return Board::startpos();
+        }
+    }
+
+    return startPos;
 }
 
 int main()
 {
-    //Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    Board board = Board::fromFEN("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
-//    divide(board,4);
-//    return 0;
+    string uciMove;
+    Move currentMove;
 
+    Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+    //Perft results wiki: https://www.chessprogramming.org/Perft_Results
+    /*Kiwipete:
+        r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -
+     */
+    //Board board = Board::fromFEN("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
     //Board board = Board::fromFEN("8/8/3p4/KPp4r/1R2Pp1k/8/6P1/8 b - e3");
-    print_board(board) << "\n";
-    auto start_time = std::chrono::high_resolution_clock::now();
-    uint64_t result = perft(board, 4);
-    auto stop_time = std::chrono::high_resolution_clock::now();
 
-    int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
-    delta_ms = std::max(delta_ms, 1); // prevent the good old divide by 0 problem :)
+    while(1) {
+        vector<string> args = getCommandArgs();
+        
+        if (args.size() == 2 && args[0] == "position" && args[1] == "startpos") {
+            board = getBoardFromMoves(vector<string>());
+        }
+        else if (args.size() >= 3 && args[0] == "position" && args[1] == "startpos" && args[2] == "moves") {
+            vector<string> moves = std::vector<string>(args.begin() + 3, args.end());
+            board = getBoardFromMoves(moves);
+            print_board_with_files(board) << "\n";
+        }
+        else if (args.size() >= 2 && args[0] == "position" && args[1] == "fen") {
+            std::stringstream fenSS;
+            vector<string> moves;
+            
+            // read fen arguments
+            int i;
+            
+            for (i = 2; i < args.size(); i++) {
+                if (args[i] != "moves") {
+                    fenSS << args[i] << " ";
+                }
+                else break;
+            }
+            
+            if (i < args.size() && args[i] == "moves") {
+                moves = std::vector<string>(args.begin() + i + 1, args.end());
+            }
+            
+            Board startPos = Board::fromFEN(fenSS.str());
+            board = getBoardFromMoves(moves, startPos);
+            print_board_with_files(board) << "\n";
 
-    cout << "Perft Nodes: " <<  result << " " << delta_ms << " ms " << (result / delta_ms * 1000) << " nodes/s" << endl;
+        }
+        else if (args.size() == 1 && args[0] == "d") {
+            print_board_with_files(board) << "\n";
+            
+            //cout << "isKingAttacked:" << board.isKingAttacked<White>() << " " << board.isKingAttacked<Black>() << endl;
+            //cout << "isAbsolutlyPinned:" << board.isAbsolutelyPinned<White>(d2) << endl;
+            //cout << "isEnPasCaptureLegal:" << board.isEnPasCaptureLegal<White>(c5) << endl; 
+            //cout << "E.p file and rank: " << (char)('a' + board.state.epSquare.file()) << " " << (int)(board.state.epSquare.rank() + 1) << endl;
+        } 
+        else if ((args.size() == 3 && args[0] == "go" && args[1] == "perft")) {
+            int depth = std::stoi(args[2]);
+            auto start_time = std::chrono::high_resolution_clock::now();
+            uint64_t result = divide(board, depth);
+            auto stop_time = std::chrono::high_resolution_clock::now();
+
+            int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
+            delta_ms = std::max(delta_ms, 1); // prevent the good old divide by 0 problem :)
+
+            cout << "Perft(" << depth << "): " << result << " nodes " << delta_ms << "ms " << (result / delta_ms * 1000) << " nodes/s" << endl;
+        }
+        else {
+            cout << "Invalid command." << endl;
+        }
+
+        
+        /*
+        while (!currentMove.isValid()) {
+            cin >> uciMove;
+            currentMove = verify_move(board, uciMove);
+            if (!currentMove.isValid()) {
+                cout << "Invalid move." << endl;
+            }
+        }
+
+        
+        depth--;
+
+        board.moveDo(currentMove);
+       */
+    }
+    
     return 0;
 }
 

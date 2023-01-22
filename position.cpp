@@ -20,41 +20,6 @@ Position::Position()
     state.halfmove_clock = 0;
 }
 
-void Position::setPiece(Piece piece, Square square)
-{
-    assert(piece.type() != Empty);
-
-    set_ref_bb(occupied_bb, square);
-    set_ref_bb(colored_bb[piece.color()], square);
-    set_ref_bb(pieces_bb[piece.color()][piece.type()], square);
-
-    piece_at[square] = piece;
-}
-
-void Position::setPiece(PieceColor color, PieceType type, Square square)
-{
-    assert(type != Empty);
-
-    set_ref_bb(occupied_bb, square);
-    set_ref_bb(colored_bb[color], square);
-    set_ref_bb(pieces_bb[color][type], square);
-
-    piece_at[square] = Piece(color, type);
-}
-
-void Position::removePiece(Square square)
-{
-    assert(piece_at[square].type() != Empty);
-
-    Piece p = piece_at[square];
-
-    reset_ref_bb(occupied_bb, square);
-    reset_ref_bb(colored_bb[p.color()], square);
-    reset_ref_bb(pieces_bb[p.color()][p.type()], square);
-
-    piece_at[square] = Piece(White, Empty);
-}
-
 void Position::movesForSide(PieceColor color, std::vector<Move> &moveList)
 {
 
@@ -79,44 +44,6 @@ void Position::movesForSide(PieceColor color, std::vector<Move> &moveList)
             movesForRayPieces<Black, Rook>(moveList);
             movesForRayPieces<Black, Queen>(moveList);
             movesForKing<Black>(moveList);
-        }
-    }
-}
-
-template<PieceColor color>
-void Position::movesUnderCheck(std::vector<Move>& moveList) {
-    Bitboard kings = pieces(color, King);
-    if (kings) {
-        Square kingSquare = lsb_bb(kings);
-        Bitboard attacker_set = attackersOf<!color>(kingSquare);
-        assert(attacker_set != 0);
-
-        if (popcount_bb(attacker_set) > 1) {
-            return movesForKing<color>(moveList);   // time to panic
-        }
-
-        Square attackerSquare = lsb_bb(attacker_set);
-        if (state.epSquare != NOT_ENPASSANT) {
-            // check if we are attacked by a double pusshed pawn
-            Square doublePawn = color == White
-                    ? state.epSquare.prevRank()
-                    : state.epSquare.nextRank();
-            if (attackerSquare  == doublePawn){  // add en passnat capture
-                Bitboard pawns = pawnCaptureStepsBB[!color][state.epSquare] & pieces(color, Pawn);
-                while (pawns) {
-                    Square pawn = pop_lsb_bb(pawns);
-                    if (isAbsolutelyPinned<color>(pawn) == false) {
-                        moveList.emplace_back(pawn, state.epSquare, CaptureEnPas);
-                    }
-                }
-            }
-        }
-
-        Direction dir = fromToDirection[kingSquare][attackerSquare];
-        Bitboard defend_ray = directionStepsBB[kingSquare][dir];
-        while (defend_ray) {
-            Bitboard target = pop_lsb_bb(defend_ray);
-            movesToSquare<color>(target, moveList);
         }
     }
 }
@@ -317,6 +244,10 @@ void Position::movesForKing(std::vector<Move> &moveList)
     Bitboard  captures = stepsOn & colored(Enemy);
     stepsOn ^= captures;   // delete captures subset
 
+    //temporaly remove the King piece, in order to verify the movement of the checked King along the attacking direction.
+    Piece kingPiece = piece_at[origin];
+    removePiece(origin);
+
     foreach_pop_lsb(target, captures) {
         if (isAttackedBy<Enemy>(target) == false )
             moveList.emplace_back(origin, target, Capture);
@@ -327,7 +258,11 @@ void Position::movesForKing(std::vector<Move> &moveList)
             moveList.emplace_back(origin, target, QuietMove);
     }
 
-    bool canCastleQSide =  state.castle_rights & AllyCastleQSide;
+    //return the King piece to his position
+    setPiece(kingPiece, origin);
+    
+    //Note: Rook moves and castle rights are handled by moveDo/moveUndo, but check that rook is on it's original square i.e. rook isn't captured by an enemy piece.
+    bool canCastleQSide =  (state.castle_rights & AllyCastleQSide) && (pieces_bb[Ally][Rook] & SHL(1, RookQSide));
     if (canCastleQSide) {
         Bitboard kingStepsOn = rayPieceSteps(Occupied, RookQSide, East);
         if (popcount_bb(kingStepsOn) == 4) {
@@ -343,11 +278,12 @@ void Position::movesForKing(std::vector<Move> &moveList)
         }
     }
 
-    bool canCastleKSide = state.castle_rights & AllyCastleKSide;
+    bool canCastleKSide = (state.castle_rights & AllyCastleKSide) && (pieces_bb[Ally][Rook] & SHL(1, RookKSide));
     if (canCastleKSide) {
         Bitboard kingStepsOn = rayPieceSteps(Occupied, RookKSide, West);
         if (popcount_bb(kingStepsOn) == 3) {
 
+            //pop_msb_bb(kingStepsOn);   // unused - not on the kings way
             foreach_pop_lsb(square, kingStepsOn) {
                 if (isAttackedBy<Enemy>(square)) {
                     canCastleKSide = false;
@@ -372,16 +308,17 @@ void Position::movesToSquare(Square target, std::vector<Move>& moveList) {
     const Bitboard enemyPieces = colored(Enemy);
     const Bitboard allyPawns = pieces(Ally,Pawn);
 
-    Bitboard seenBy = attackersOf<color>(target);
-
     if (is_set_bb(allyPieces, target))
         return; // nothing to do here then
+
+    Bitboard seenBy = attackersOf<Ally>(target);
+
 
     if (!is_set_bb(enemyPieces, target) && state.epSquare != target) { // target is not an opponent's piece nor the en passant square
 
         seenBy &= ~(seenBy & allyPawns); // remove pawn captures because target is not a piece
 
-        //add a pawn that can move to the target square
+        //add the pawn that can move to the target square
         if (is_set_bb(pawnsPush<color>(), target)) {
             Square origin = color == White ? target.prevRank() : target.nextRank();
             set_ref_bb(seenBy, origin);
@@ -419,18 +356,173 @@ void Position::movesToSquare(Square target, std::vector<Move>& moveList) {
                 }
             } else {
                 if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][target]) == false) {
-                    moveList.emplace_back(origin, target, pieceTrgt.isEmpty() ? QuietMove : Capture );
+                    
+                    bool isDoublePushedPawn = color == White ? (target - 16) == origin : (target + 16) == origin;
+
+                    if (isDoublePushedPawn) {
+                        moveList.emplace_back(origin, target, DoublePush);
+                    }
+                    else {
+                        moveList.emplace_back(origin, target, pieceTrgt.isEmpty() ? QuietMove : Capture);
+                    }
                 }
             }
         } else if (pieceOrig.isKing() ) {
-            if (isAttackedBy<!color>(target)) {
+            if (isAttackedBy<Enemy>(target) == false) {
                 moveList.emplace_back(origin, target, pieceTrgt.isEmpty() ? QuietMove : Capture );
             }
         } else { // knight, bishop, rook, queen
-            if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][target]) == false) {
+            if (isAbsolutelyPinned<Ally>(origin, fromToDirection[origin][target]) == false) {
                 moveList.emplace_back(origin, target, pieceTrgt.isEmpty() ? QuietMove : Capture );
             }
         }
+    }
+}
+
+// same as movesToSquare but without king moves
+// TODO: used for movesUnderCheck, possibly redesign
+template<PieceColor color>
+void Position::movesToSquareNoKing(Square target, std::vector<Move>& moveList) {
+
+    constexpr PieceColor Ally = color == White ? White : Black;
+    constexpr PieceColor Enemy = color == White ? Black : White;
+
+    const Bitboard allyPieces = colored(Ally);
+    const Bitboard enemyPieces = colored(Enemy);
+    const Bitboard allyPawns = pieces(Ally, Pawn);
+
+    if (is_set_bb(allyPieces, target))
+        return; // nothing to do here then
+    
+    Bitboard seenBy = attackersOf<Ally>(target);
+
+
+    if (!is_set_bb(enemyPieces, target) && state.epSquare != target) { // target is not an opponent's piece nor the en passant square
+
+        seenBy &= ~(seenBy & allyPawns); // remove pawn captures because target is not a piece
+
+        //add the pawn that can move to the target square
+        if (is_set_bb(pawnsPush<color>(), target)) {
+            Square origin = color == White ? target.prevRank() : target.nextRank();
+            set_ref_bb(seenBy, origin);
+        }
+
+        //add double pushed pawn that can move to target square
+        if (is_set_bb(pawnsPushDouble<color>(), target)) {
+            Square origin = color == White ? target.prevRank().prevRank() : target.nextRank().nextRank();
+            //moveList.emplace_back(origin, target, DoublePush);
+            set_ref_bb(seenBy, origin);
+        }
+    }
+
+    while (seenBy) {
+        Square origin = pop_lsb_bb(seenBy);
+        Piece pieceOrig = pieceAt(origin);
+        Piece pieceTrgt = pieceAt(target);
+
+        if (pieceOrig.isPawn()) { // is a pawn
+            if (target == state.epSquare) {
+                if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][target]) == false) {
+                    moveList.emplace_back(origin, target, CaptureEnPas);
+                }
+            }
+            else if ((color == White && target.rank() == 7) || (color == Black && target.rank() == 0)) {
+                if (pieceTrgt.isEmpty()) {    // promote without capture
+                    if (isAbsolutelyPinned<color>(origin, color == White ? North : South) == false) {
+                        moveList.emplace_back(origin, target, PromToQueen); moveList.emplace_back(origin, target, PromToKnight);
+                        moveList.emplace_back(origin, target, PromToRook); moveList.emplace_back(origin, target, PromToBishop);
+                    }
+                }
+                else {    // promote with capture
+                    if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][target]) == false) {
+                        moveList.emplace_back(origin, target, PromToQueenCapture); moveList.emplace_back(origin, target, PromToKnightCapture);
+                        moveList.emplace_back(origin, target, PromToRookCapture); moveList.emplace_back(origin, target, PromToBishopCapture);
+                    }
+                }
+            }
+            else {
+                if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][target]) == false) {
+         
+                    bool isDoublePushedPawn = color == White ? (target - 16) == origin : (target + 16) == origin;
+                    
+                    if (isDoublePushedPawn) {
+                        moveList.emplace_back(origin, target, DoublePush);
+                    } else {
+                        moveList.emplace_back(origin, target, pieceTrgt.isEmpty() ? QuietMove : Capture);
+                    }
+                }
+            }
+        }
+        else if (pieceOrig.isKing()) {
+            // king moves are ignored
+        }
+        else { // knight, bishop, rook, queen
+            if (isAbsolutelyPinned<Ally>(origin, fromToDirection[origin][target]) == false) {
+                moveList.emplace_back(origin, target, pieceTrgt.isEmpty() ? QuietMove : Capture);
+            }
+        }
+    }
+}
+
+template<PieceColor color>
+void Position::movesUnderCheck(std::vector<Move>& moveList) {
+    constexpr PieceColor Defender = color == White ? White : Black;
+    constexpr PieceColor Attacker = color == White ? Black : White;
+
+    Bitboard kings = pieces(Defender, King);
+
+    assert(kings != 0);
+
+    Square kingSquare = lsb_bb(kings);
+    Bitboard attacker_set = attackersOf<Attacker>(kingSquare);
+    assert(attacker_set != 0);
+
+    // get king moves, since the defend_ray direction can't contain king moves the set of moves is disjoint with the movesToSquare for the king piece
+    // TODO: the check for the king moves on defend_ray is currently done multiple times
+    movesForKing<Defender>(moveList);
+
+    // get moves for pieces to the ray between the king and the attacker
+    if (popcount_bb(attacker_set) > 1) {
+        /*The king must move since there is no way to block two different lines or take two different pieces at the same time*/
+        return;   // time to panic
+    }
+
+    Square attackerSquare = lsb_bb(attacker_set);
+    if (state.epSquare != NOT_ENPASSANT) {
+        // check if we are attacked by a double pushed pawn
+        Square doublePawn = color == White
+            ? state.epSquare.prevRank()
+            : state.epSquare.nextRank();
+        if (attackerSquare == doublePawn) {  // add en passnat capture
+            Bitboard pawns = pawnCaptureStepsBB[Attacker][state.epSquare] & pieces(color, Pawn);
+            while (pawns) {
+                Square pawn = pop_lsb_bb(pawns);
+                if (isAbsolutelyPinned<Defender>(pawn) == false) {
+                    moveList.emplace_back(pawn, state.epSquare, CaptureEnPas);
+                }
+            }
+        }
+    }
+
+    //Direction dir = fromToDirection[kingSquare][attackerSquare];
+    //Bitboard defend_ray = directionStepsBB[kingSquare][dir];
+
+
+
+    // set the attacker's square as the target of the move
+    // this is the only case if the attacker is a knight or a pawn
+    Bitboard defend_ray = attacker_set;
+
+    /* Handle addtion of attackers that are ray pieces, queens, bishops and rooks*/
+    if ((pieces_bb[Attacker][Knight] & attacker_set) == 0UL) {
+        Direction dir = fromToDirection[attackerSquare][kingSquare];
+        defend_ray |= rayPieceSteps(occupied_bb, attackerSquare, dir); // add ray segment from attacker to target, (excluding attacker's square)
+    }
+
+    while (defend_ray) {
+        Bitboard target = pop_lsb_bb(defend_ray);
+        // since movesForKing() handles the case when the attacker is on an adjacent square to the king, use movesToSquareNoKing()
+        movesToSquareNoKing<color>(target, moveList);
     }
 }
 

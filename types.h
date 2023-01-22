@@ -4,7 +4,10 @@
 #include <cstdint>
 #include <cassert>
 #include <algorithm>
+#include <vector>
 
+#undef assert
+#define assert(arg) {}
 
 // shift left and shift right macros
 #define SHL(value, count) ( (std::uint64_t)(value) << (count) )
@@ -54,34 +57,6 @@ enum Direction {
 constexpr std::int8_t directionStepOffsets[DIRECTION_CNT][2] = {{+0,+1}, {+1,+1}, {+1,0}, {+1,-1}, {+0,-1}, {-1,-1}, {-1,+0}, {-1,+1}};
 constexpr std::int8_t knightStepOffsets[8][2] = { {+1,+2}, {+2,+1}, {+2,-1}, {+1,-2}, {-1,-2}, {-2,-1}, {-2,+1}, {-1,+2} };
 
-enum MoveType : std::uint8_t {
-    // MoveType implementation is taken from the chessprogramming site:
-    // url: https://chessprogramming.wikispaces.com/Encoding+Moves
-    // fits into 4 bits flags as | Promotion | Capture | Special1 | Special2 |
-
-    Special_0       = SHL(1,0),
-    Special_1       = SHL(1,1),
-    ///////////////////////////
-    QuietMove       = 0,
-    DoublePush      = QuietMove | Special_0,
-    CastleKSide     = QuietMove | Special_1,
-    CastleQSide     = QuietMove | Special_0 | Special_1,
-    ////////////////////////////////////////////////////
-    Capture         = SHL(1,2),
-    CaptureEnPas    = Capture | Special_0,
-    //////////////////////////////////////
-    Promotion       = SHL(1,3),
-    PromToKnight    = Promotion,
-    PromToBishop    = Promotion | Special_0,
-    PromToRook      = Promotion | Special_1,
-    PromToQueen     = Promotion | Special_0 | Special_1,
-    ///////////////////////////////////////////////////////
-    PromToKnightCapture = PromToKnight | Capture,
-    PromToBishopCapture = PromToBishop | Capture,
-    PromToRookCapture   = PromToRook   | Capture,
-    PromToQueenCapture  = PromToQueen  | Capture,
-}; // !enum MoveType
-
 class Square {
 
     std::uint8_t ofst;
@@ -90,8 +65,8 @@ public:
 
     Square() = default;
 
-    constexpr Square(std::uint8_t value) : ofst(value) {}
-    constexpr Square(SquareEnum value)   : ofst(value) {}
+    inline constexpr Square(std::uint8_t value) : ofst(value) {}
+    inline constexpr Square(SquareEnum value)   : ofst(value) {}
 
     constexpr Square(std::uint8_t file, std::uint8_t rank) : ofst(file+rank*8) {}
 
@@ -116,12 +91,12 @@ public:
 
     constexpr Square flipVertically() const { return ofst ^ 56; }
 
-    inline std::uint8_t chebyshevDistance(Square other) const {
+    inline std::uint8_t chessboardDistance(Square other) const {
         return std::max( std::abs( other.file() - file() ), std::abs( other.rank() - rank() ) );
     }
 
     //constexpr operator SquareEnum() const { return SquareEnum(ofst); }
-    constexpr operator std::uint8_t() const { return ofst; }
+    inline constexpr operator std::uint8_t() const { return ofst; }
 
 
     inline Square& operator++() { ofst++; return *this; }
@@ -165,13 +140,41 @@ public:
 
 }; // !class Piece
 
+enum MoveType : std::uint8_t {
+    // MoveType implementation is taken from the chessprogramming site:
+    // url: https://chessprogramming.wikispaces.com/Encoding+Moves
+    // fits into 4 bits flags as | Promotion | Capture | Special1 | Special0 |
+
+    Special_0 = SHL(1, 0),
+    Special_1 = SHL(1, 1),
+    ///////////////////////////
+    QuietMove = 0,
+    DoublePush = QuietMove | Special_0,
+    CastleKSide = QuietMove | Special_1,
+    CastleQSide = QuietMove | Special_0 | Special_1,
+    ////////////////////////////////////////////////////
+    Capture = SHL(1, 2),
+    CaptureEnPas = Capture | Special_0,
+    //////////////////////////////////////
+    Promotion = SHL(1, 3),
+    PromToKnight = Promotion,
+    PromToBishop = Promotion | Special_0,
+    PromToRook = Promotion | Special_1,
+    PromToQueen = Promotion | Special_0 | Special_1,
+    ///////////////////////////////////////////////////////
+    PromToKnightCapture = PromToKnight | Capture,
+    PromToBishopCapture = PromToBishop | Capture,
+    PromToRookCapture = PromToRook | Capture,
+    PromToQueenCapture = PromToQueen | Capture,
+}; // !enum MoveType
+
 class Move
 {
     std::uint16_t bits;
     // | Move bits meaning:                              |
     // | ----------------------------------------------- |
-    // | Origin | Target | Special | Capture | Promotion |
-    // |   0-5  |  6-11  |  12-13  |    14   |    15     |
+    // | Promotion | Capture | Special | Target | Origin |
+    // |     15    |    14   |  13-12  |  11-8  |  5-0   |
     // | ----------------------------------------------- |
 
 
@@ -194,11 +197,13 @@ public:
 
     inline PieceType promoteTo() const {
         std::uint8_t toType = type() & ~(1<<2); // remove capture flag
-        return toType == PromToQueen ? Queen
+        assert(isPromotion());
+        return PieceType(Knight + (toType & ~(1 << 3))); // remove promotion flag
+        /*return toType == PromToQueen ? Queen
                 : toType == PromToKnight ? Knight
-                  : toType == PromToRook ? Rook
                     : toType == PromToBishop ? Bishop
-                      : Empty;
+                        : toType == PromToRook ? Rook
+                            : Empty;*/
 
     }
 

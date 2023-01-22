@@ -1,7 +1,7 @@
 #include "board.h"
-#include <sstream>
 #include <iterator>
 #include <iostream>
+#include <sstream> // for FEN 
 
 Board::Board()
 {
@@ -17,8 +17,8 @@ void Board::moveDo(Move move)
 
     /* handle state changes */
 
-    // save state of the position
-    state_stack.push_back(positionState());
+    // save the previous state of the position
+    state_stack.emplace_back(positionState());
 
     // set en passant square
     if (moveType == DoublePush) {
@@ -43,9 +43,9 @@ void Board::moveDo(Move move)
 
     if (castleOriginSquares & originBB) {
         if (origin == e1 ) { // white king moves
-            state.castle_rights &= ~(CastlingFlagWK & CastlingFlagWQ);
+            state.castle_rights &= ~(CastlingFlagWK | CastlingFlagWQ);
         } else if (origin == e8) { // black king moves
-            state.castle_rights &= ~(CastlingFlagBK & CastlingFlagBQ);
+            state.castle_rights &= ~(CastlingFlagBK | CastlingFlagBQ);
         } else if (origin == a1) { // wq rook moves
             state.castle_rights &= ~(CastlingFlagWQ);
         } else if (origin == h1) { // wk rook moves
@@ -59,20 +59,12 @@ void Board::moveDo(Move move)
 
     /* make positional changes */
     if (moveType == QuietMove) {
-//        const Bitboard originBB   = SHL(1,origin);
-//        const Bitboard targetBB   = SHL(1,target);
-//        const Bitboard origTrgtBB = originBB | targetBB;
-//        occupied_bb ^= origTrgtBB;
-//        colored_bb[piece.color()] ^= origTrgtBB;
-//        pieces_bb[piece.color()][piece.type()]   ^= origTrgtBB;
-//        piece_at[origin] = Piece(White, Empty);
-//        piece_at[target] = piece;
         removePiece(move.origin() );
         setPiece(piece, move.target() );
 
 
     } else if (moveType == Capture) {
-        captured_pieses.push_back(pieceAt(move.target() )); // store captured piece
+        captured_pieses.emplace_back(pieceAt(move.target() )); // store captured piece
         removePiece(move.origin() );
         removePiece(move.target() );
         setPiece(piece, move.target() );
@@ -83,7 +75,7 @@ void Board::moveDo(Move move)
 
     } else if (move.isPromotion() ) {
         if (move.isCapture() ) {
-            captured_pieses.push_back(pieceAt(move.target() )); // store captured piece
+            captured_pieses.emplace_back(pieceAt(move.target() )); // store captured piece
             removePiece(move.target() );
         }
         removePiece(move.origin() );
@@ -111,22 +103,21 @@ void Board::moveDo(Move move)
         Square capturedPawn = piece.color() == White
                 ? move.target().prevRank()
                 : move.target().nextRank();
-        captured_pieses.push_back(pieceAt(capturedPawn) ); // store captured pawn
+        captured_pieses.emplace_back(pieceAt(capturedPawn) ); // store captured pawn
         removePiece(capturedPawn);
         removePiece(move.origin() );
         setPiece(piece, move.target() );
     }
+    else {
+        assert(false); // invalid move in moveUndo
+    }
 
-    moves_done.push_back(move);
+    moves_done.emplace_back(move);
     side = !side;
 }
 
 void Board::moveUndo()
 {
-    // restore state
-    setPositionState(state_stack.back());
-    state_stack.pop_back();
-
     Move move = moves_done.back();
     MoveType moveType = move.type();
     Piece pieceOrig = pieceAt(move.target());
@@ -178,6 +169,11 @@ void Board::moveUndo()
 
     moves_done.pop_back();
     side = !side;
+
+    // restore state
+    setPositionState(state_stack.back());
+    state_stack.pop_back();
+
 }
 
 Board Board::fromFEN(std::string fenRecord)
@@ -260,4 +256,8 @@ Board Board::fromFEN(std::string fenRecord)
     }
 
     return board;
+}
+
+Board Board::startpos() {
+    return Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }

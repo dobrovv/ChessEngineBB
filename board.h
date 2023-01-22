@@ -5,9 +5,12 @@
 #include "bitboard.h"
 #include "position.h"
 #include <vector>
+#include <string> // for FEN
 
 class Board : public Position
 {
+public:
+//private:
     std::vector<Move>  moves_done;
     std::vector<PositionState> state_stack;
     std::vector<Piece> captured_pieses;
@@ -19,6 +22,8 @@ public:
     void moveUndo();
 
     static Board fromFEN(std::string fenRecord);
+    
+    static Board startpos();
 
 };
 #endif // BOARD_H

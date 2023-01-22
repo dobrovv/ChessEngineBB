@@ -2,6 +2,8 @@
 #define BITBOARD_H
 
 #include "types.h"
+#include <bitset>   // popcount
+#include <climits>  // popcount
 
 using Bitboard = std::uint64_t;
 
@@ -76,11 +78,23 @@ Bitboard shift_bb(const Bitboard bboard) {
 inline int popcount_bb(Bitboard bboard) {
     return __builtin_popcountll(bboard);
 }
+
+#elif N_MSC_VER
+inline int popcount_bb(Bitboard bboard) {
+    
+}
+
+#else
+
+inline int popcount_bb(Bitboard n) {
+    return std::bitset<CHAR_BIT * sizeof n>(n).count();
+}
+
 #endif
 
 
 ///////////////////////////////////////////
-////            Bitscans               ////
+// Bitscans Forward(lsb) and Reverse(msb)//
 ///////////////////////////////////////////
 #ifdef __GNUC__
 inline Square lsb_bb(Bitboard bboard) {
@@ -92,22 +106,76 @@ inline Square msb_bb(Bitboard bboard) {
     assert(bboard != 0);
     return __builtin_clzll(bboard) ^ 63;
 }
+#elif N_MSC_VER
+inline Square lsb_bb(Bitboard bboard) {
+
+}
+
+inline Square msb_bb(Bitboard bboard) {
+
+}
+#else
+/* Generic implementation of bitscan forward and bitscan reverse
+ * Ref: https://www.chessprogramming.org/BitScan
+ */
+const int index64[64] = {
+    0, 47,  1, 56, 48, 27,  2, 60,
+   57, 49, 41, 37, 28, 16,  3, 61,
+   54, 58, 35, 52, 50, 42, 21, 44,
+   38, 32, 29, 23, 17, 11,  4, 62,
+   46, 55, 26, 59, 40, 36, 15, 53,
+   34, 51, 20, 43, 31, 22, 10, 45,
+   25, 39, 14, 33, 19, 30,  9, 24,
+   13, 18,  8, 12,  7,  6,  5, 63
+};
+
+/**
+ * bitScanForward
+ * @author Kim Walisch (2012)
+ * @param bb bitboard to scan
+ * @precondition bb != 0
+ * @return index (0..63) of least significant one bit
+ */
+inline Square lsb_bb(Bitboard bb) {
+    assert(bb != 0);
+    constexpr Bitboard debruijn64 = 0x03f79d71b4cb0a89UL;
+    return index64[((bb ^ (bb - 1)) * debruijn64) >> 58];
+}
+
+/**
+ * bitScanReverse
+ * @authors Kim Walisch, Mark Dickinson
+ * @param bb bitboard to scan
+ * @precondition bb != 0
+ * @return index (0..63) of most significant one bit
+ */
+inline Square msb_bb(Bitboard bb) {
+    assert(bb != 0);
+    constexpr Bitboard debruijn64 = 0x03f79d71b4cb0a89UL;
+    bb |= bb >> 1;
+    bb |= bb >> 2;
+    bb |= bb >> 4;
+    bb |= bb >> 8;
+    bb |= bb >> 16;
+    bb |= bb >> 32;
+    return index64[(bb * debruijn64) >> 58];
+}
 #endif
 
 
 inline Square pop_lsb_bb(Bitboard &bboard) {
-    assert(bboard != 0);
     Square square = lsb_bb(bboard);
     bboard &= bboard - 1;
     return square;
 }
 
-/*inline Square pop_msb_bb(Bitboard &bboard) {
-    Square square = bitscan_reverse(bboard);
-    bboard &= bboard - 1;   // what comes here ?
+inline Square pop_msb_bb(Bitboard &bboard) {
+    Square square = msb_bb(bboard);
+    bboard &= ~(1<<square);
     return square;
-}*/
+}
 
+//TODO: replace square by uint8_t
 #define foreach_pop_lsb(square, bboard) for (Square square; (bboard) && ((square = pop_lsb_bb(bboard)) || true);)
 
 #endif // BITBOARD_H

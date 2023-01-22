@@ -29,8 +29,8 @@ struct PositionState {
 
 class Position
 {
-
-protected:
+public:
+//protected:
     Bitboard occupied_bb;
     Bitboard colored_bb[COLOR_CNT];
     Bitboard pieces_bb[COLOR_CNT][TYPE_CNT];
@@ -38,15 +38,15 @@ protected:
     Piece  piece_at[SQUARE_CNT];
 
     PositionState state;
-    PieceColor side;      // player to move next
+    PieceColor side;      // next player to move
 
 public:
     Position();
 
-    Piece pieceAt(Square square)   const { return piece_at[square]; }
-    void setPiece(Piece piece, Square square);
-    void setPiece(PieceColor color, PieceType type, Square square);
-    void removePiece(Square square);    
+    inline Piece pieceAt(Square square)   const { return piece_at[square]; }
+    inline void setPiece(Piece piece, Square square);
+    inline void setPiece(PieceColor color, PieceType type, Square square);
+    inline void removePiece(Square square);    
 
     inline Bitboard occupied() const { return occupied_bb; }
     inline Bitboard colored(PieceColor withColor)            const { return colored_bb[withColor]; }
@@ -71,7 +71,7 @@ public:
 
     template<PieceColor color>
     bool isPinned(Square pinned, Square to, Direction ignored = DIRECTION_CNT);
-
+    
     template<PieceColor color>
     bool isAbsolutelyPinned(Square to, Direction ignored = DIRECTION_CNT);
 
@@ -82,6 +82,7 @@ public:
     //void movesForPawns(PieceColor color, std::vector<Move> &moveList);
 
 private:    /* helper functions */
+
     template<PieceColor color>
     void movesForPawns(std::vector<Move>& moveList);
 
@@ -98,6 +99,9 @@ private:    /* helper functions */
     void movesToSquare(Square target, std::vector<Move>& moveList);
 
     template<PieceColor color>
+    void movesToSquareNoKing(Square target, std::vector<Move>& moveList);
+
+    template<PieceColor color>
     void movesUnderCheck(std::vector<Move> &moveList);
 
     template<PieceColor color> Bitboard pawnsPush();
@@ -106,6 +110,41 @@ private:    /* helper functions */
     template<PieceColor color> Bitboard pawnsCaptureWest();
 
 };
+
+inline void Position::setPiece(Piece piece, Square square)
+{
+    assert(piece.type() != Empty);
+
+    set_ref_bb(occupied_bb, square);
+    set_ref_bb(colored_bb[piece.color()], square);
+    set_ref_bb(pieces_bb[piece.color()][piece.type()], square);
+
+    piece_at[square] = piece;
+}
+
+inline void Position::setPiece(PieceColor color, PieceType type, Square square)
+{
+    assert(type != Empty);
+
+    set_ref_bb(occupied_bb, square);
+    set_ref_bb(colored_bb[color], square);
+    set_ref_bb(pieces_bb[color][type], square);
+
+    piece_at[square] = Piece(color, type);
+}
+
+inline void Position::removePiece(Square square)
+{
+    assert(piece_at[square].type() != Empty);
+
+    const Piece p = piece_at[square];
+
+    reset_ref_bb(occupied_bb, square);
+    reset_ref_bb(colored_bb[p.color()], square);
+    reset_ref_bb(pieces_bb[p.color()][p.type()], square);
+
+    piece_at[square] = Piece(White, Empty);
+}
 
 // Sliding Piece Attacks source:
 // https://chessprogramming.wikispaces.com/Classical+Approach
@@ -122,7 +161,7 @@ inline Bitboard rayPieceSteps(Bitboard occupied, Square origin, Direction dir) {
 }
 
 template <PieceColor bySide>
-Bitboard Position::attackersOf(Square square) {
+inline Bitboard Position::attackersOf(Square square) {
 
     constexpr PieceColor Attacker = bySide == White ? White : Black;
     constexpr PieceColor Defender = bySide == White ? Black : White;
@@ -155,17 +194,18 @@ Bitboard Position::attackersOf(Square square) {
     return result;
 }
 
-template<PieceColor color>
-bool Position::isAttackedBy(Square square) {
+/* Returns true if the square target is attacked by the side attackerColor*/
+template<PieceColor attackerColor>
+inline bool Position::isAttackedBy(Square target) {
 
-    constexpr PieceColor Attacker = color == White ? White : Black;
-    constexpr PieceColor Defender = color == White ? Black : White;
+    constexpr PieceColor Attacker = attackerColor == White ? White : Black;
+    constexpr PieceColor Defender = attackerColor == White ? Black : White;
 
     // check pawns
-    if (pawnCaptureStepsBB[Defender][square] & pieces(Attacker, Pawn))
+    if (pawnCaptureStepsBB[Defender][target] & pieces(Attacker, Pawn))
         return true;
     // check knights
-    if (knightStepsBB[square] & pieces(Attacker, Knight) )
+    if (knightStepsBB[target] & pieces(Attacker, Knight) )
         return true;
 
     const Bitboard Occupied = occupied();
@@ -176,7 +216,8 @@ bool Position::isAttackedBy(Square square) {
 
     // check ray pieces
     for (Direction dir = North; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
-        Bitboard seenBy = rayPieceSteps(Occupied, square, dir) & attackerRayPieses;
+        Bitboard seenBy = rayPieceSteps(Occupied, target, dir) & attackerRayPieses;
+        // TODO: remove outer if check
         if (seenBy) {
             if (dir == North || dir == East || dir == South || dir == West) {
                 if (seenBy & (attackerQueens | attackerRooks))
@@ -188,14 +229,14 @@ bool Position::isAttackedBy(Square square) {
         }
     }
 
-    if (kingStepsBB[square] & pieces(Attacker, King))
+    if (kingStepsBB[target] & pieces(Attacker, King))
         return true;
 
     return false;
 }
 
 template<PieceColor color>
-bool Position::isKingAttacked() {
+inline bool Position::isKingAttacked() {
     constexpr PieceColor Ally  = color == White ? White : Black;
     constexpr PieceColor Enemy = color == White ? Black : White;
 
@@ -207,14 +248,29 @@ bool Position::isKingAttacked() {
 }
 
 template<PieceColor color>
-bool Position::isPinned(Square pinned, Square to, Direction ignored) {
-    Direction dir = fromToDirection[to][pinned];
-    if (dir == DIRECTION_CNT || dir == ignored)
+inline bool Position::isPinned(Square pinned, Square toPiece, Direction ignored) {
+
+    constexpr PieceColor Defender = color == White ? White : Black;
+    constexpr PieceColor Attacker = color == White ? Black : White;
+
+    Direction dir = fromToDirection[toPiece][pinned];
+    
+    // note the ignored parameter is used for pieces moving along the pinned line (?) TODO: if pinned by multiple pieces
+    // for now ignored direction should also include the opposite direction, for pieces that move back along the checked line
+    if (dir == DIRECTION_CNT || dir == ignored || (dir == ((ignored+4) % DIRECTION_CNT) && ignored != DIRECTION_CNT) )
         return false;
 
+
     Bitboard occupied_set = occupied();
+
     reset_ref_bb(occupied_set, pinned);
-    Bitboard ray = rayPieceSteps(occupied_set, to, dir) & colored(!color);
+    
+    //check if 'pinned' piece is obstructed on the path from toPiece
+    Bitboard obstructed = (directionStepsBB[toPiece][dir] ^ directionStepsBB[pinned][dir]) & occupied_set;
+    if (obstructed)
+        return false;
+
+    Bitboard ray = rayPieceSteps(occupied_set, toPiece, dir) & colored(Attacker);
     if (ray) {
         Square attackerSquare = pop_lsb_bb(ray);
         Piece attacker = pieceAt(attackerSquare);
@@ -229,21 +285,23 @@ bool Position::isPinned(Square pinned, Square to, Direction ignored) {
 }
 
 template<PieceColor color>
-bool Position::isAbsolutelyPinned(Square pinned, Direction ignored) {
+inline bool Position::isAbsolutelyPinned(Square pinned, Direction ignored) {
     Bitboard kingBB = pieces(color, King);
-    if (kingBB) {
-        Square kingSquare = lsb_bb(kingBB);
-        return isPinned<color>(pinned, kingSquare, ignored);
-    }
-    return false;
+
+    assert(kingBB != 0UL);
+   
+    Square kingSquare = lsb_bb(kingBB);
+
+    return isPinned<color>(pinned, kingSquare, ignored);
 }
 
 template<PieceColor color>
-bool Position::isEnPasCaptureLegal(Square origin) {
+inline bool Position::isEnPasCaptureLegal(Square origin) {
     assert(state.epSquare != NOT_ENPASSANT);
 
     Bitboard kingBB = pieces(color, King);
     if (kingBB) {
+        // verify that the pawn is not pinned
         Square kingSquare = lsb_bb(kingBB);
         if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][state.epSquare]))
             return false;
@@ -251,8 +309,13 @@ bool Position::isEnPasCaptureLegal(Square origin) {
                 ? state.epSquare.prevRank()
                 : state.epSquare.nextRank();
 
+        //En passant target square should be under attack of an opponent pawn for pseudo legality.
+        //Further, for strict legality, the ep capturing pawn should not be absolutely pinned, 
+        //which additionally requires a horizontal pin test of both involved pawns, which disappear from the same *rank*.
+
+        // check that if king is on the same rank as the pawns, it is not pinned horizontaly
         Direction dir = fromToDirection[kingSquare][epPawnSquare];
-        if (dir != DIRECTION_CNT) {
+        if (dir == East || dir == West) {
             Bitboard occupied_set = occupied();
             reset_ref_bb(occupied_set, origin);
             reset_ref_bb(occupied_set, epPawnSquare);
