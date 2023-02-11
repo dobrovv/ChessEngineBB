@@ -8,6 +8,7 @@
 
 #undef assert
 #define assert(arg) {}
+//#define endl "\n"
 
 // shift left and shift right macros
 #define SHL(value, count) ( (std::uint64_t)(value) << (count) )
@@ -41,21 +42,62 @@ enum PieceType : std::uint8_t {
     TYPE_CNT
 };
 
-enum Direction {
-    North,
-    NorthEast,
-    East,
-    SouthEast,
-    South,
-    SouthWest,
-    West,
-    NorthWest,
+constexpr PieceType operator++(PieceType pt) { return pt = (PieceType)(pt + 1); }
+
+/*
+The directional offsets are represented by the following compass
+noWe       nort         noEa
+      + 7 + 8 + 9
+         \  |  /
+west - 1 < -0 -> + 1    east
+         /  |  \
+      - 9 - 8 - 7
+soWe       sout         soEa
+*/
+
+enum Direction : std::int8_t {
+    NorthWest,          // offset +7
+    North,          // offset +8
+    NorthEast,          // offset +9
+    East,           // offset +1
+    SouthEast,          // offset -7
+    South,          // offset -8
+    SouthWest,          // offset -9
+    West,           // offset -1
     //////////////
-    DIRECTION_CNT
+    DIRECTION_CNT, 
+    NO_DIRECTION = DIRECTION_CNT,   // no direcion specified
+    DIRECTION_FIRST = NorthWest,    // direction to start the iterations with
 };
 
-constexpr std::int8_t directionStepOffsets[DIRECTION_CNT][2] = {{+0,+1}, {+1,+1}, {+1,0}, {+1,-1}, {+0,-1}, {-1,-1}, {-1,+0}, {-1,+1}};
-constexpr std::int8_t knightStepOffsets[8][2] = { {+1,+2}, {+2,+1}, {+2,-1}, {+1,-2}, {-1,-2}, {-2,-1}, {-2,+1}, {-1,+2} };
+//TODO add bishopDir and rookDir function cheks for directions
+//TODO add direction positive/negative for rayPieceSteps
+
+constexpr bool isDirectionPositive(Direction dir) {
+    assert(dir != NO_DIRECTION);
+    return dir < 4;
+}
+
+constexpr bool isDirectionNegative(Direction dir) {
+    assert(dir != NO_DIRECTION);
+    return dir >= 4;
+}
+
+constexpr bool isDirectionRook(Direction dir) {
+    assert(dir != NO_DIRECTION);
+    return dir % 2 != 0;    // (dir == North || dir == East || dir == South || dir == West);
+}
+
+constexpr bool isDirectionBishop(Direction dir) {
+    assert(dir != NO_DIRECTION);
+    return dir % 2 == 0;    // (dir == NorthWest || dir == NorthEast || dir == SouthEast || dir == SouthWest);
+}
+
+// inverse of the direction dir
+constexpr Direction invDir(Direction dir) {
+    assert(dir != NO_DIRECTION);
+    return static_cast<Direction>( (dir + 4) % DIRECTION_CNT );
+}
 
 class Square {
 
@@ -199,17 +241,16 @@ public:
         std::uint8_t toType = type() & ~(1<<2); // remove capture flag
         assert(isPromotion());
         return PieceType(Knight + (toType & ~(1 << 3))); // remove promotion flag
-        /*return toType == PromToQueen ? Queen
-                : toType == PromToKnight ? Knight
-                    : toType == PromToBishop ? Bishop
-                        : toType == PromToRook ? Rook
-                            : Empty;*/
-
     }
 
     constexpr bool operator==(Move other) const { return (bits & other.bits) & 0xFFFF;}
     constexpr bool operator!=(Move other) const { return (bits & other.bits) & 0xFFFF;}
 }; // !class Move
 
+
+struct ExtMove {
+    int val;
+    Move move;
+};
 
 #endif // ENGINETYPES_H

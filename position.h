@@ -4,11 +4,17 @@
 #include "types.h"
 #include "bitboard.h"
 
-extern Bitboard pawnCaptureStepsBB[COLOR_CNT][SQUARE_CNT];
-extern Bitboard kingStepsBB[SQUARE_CNT];
-extern Bitboard knightStepsBB[SQUARE_CNT];
-extern Bitboard directionStepsBB[SQUARE_CNT][DIRECTION_CNT];
-extern Direction fromToDirection[SQUARE_CNT][SQUARE_CNT];
+//  directional offsets, file and rank offsets of a corresponding direction dir 
+constexpr std::int8_t directionStepOffsets[DIRECTION_CNT][2] = { {-1,+1}, {+0,+1}, {+1,+1}, {+1,0}, {+1,-1}, {+0,-1}, {-1,-1}, {-1,+0} };
+
+//  knight atacks, file and rank offset to the atacked squares
+constexpr std::int8_t knightStepOffsets[8][2] = { {+1,+2}, {+2,+1}, {+2,-1}, {+1,-2}, {-1,-2}, {-2,-1}, {-2,+1}, {-1,+2} };
+
+extern Bitboard pawnCaptureStepsBB[COLOR_CNT][SQUARE_CNT]; // diagonal squares attacked by the pawn of color 'color' at square sq
+extern Bitboard kingStepsBB[SQUARE_CNT]; // all adjacent and diagonal squares at square sq
+extern Bitboard knightStepsBB[SQUARE_CNT]; //all squares attacked by a knight at square sq
+extern Bitboard directionStepsBB[SQUARE_CNT][DIRECTION_CNT]; // all ray squares starting at (and excluding) square sq in direction dir
+extern Direction fromToDirection[SQUARE_CNT][SQUARE_CNT]; // direction between suare sq and square sq2 or NO_DIRECTION
 
 enum CastlingRights : std::uint8_t {
     NoCastlingFlags = 0,
@@ -40,6 +46,8 @@ public:
     PositionState state;
     PieceColor side;      // next player to move
 
+    Bitboard pinned_bb;
+
 public:
     Position();
 
@@ -70,10 +78,10 @@ public:
     bool isKingAttacked();
 
     template<PieceColor color>
-    bool isPinned(Square pinned, Square to, Direction ignored = DIRECTION_CNT);
+    bool isPinned(Square pinned, Square to, Direction ignored = NO_DIRECTION);
     
     template<PieceColor color>
-    bool isAbsolutelyPinned(Square to, Direction ignored = DIRECTION_CNT);
+    bool isAbsolutelyPinned(Square to, Direction ignored = NO_DIRECTION);
 
     template<PieceColor color>
     bool isEnPasCaptureLegal(Square origin);
@@ -82,6 +90,13 @@ public:
     //void movesForPawns(PieceColor color, std::vector<Move> &moveList);
 
 private:    /* helper functions */
+
+protected:
+    // finds the pinned pieces for the side Color and stores the pinned pieces in pinned_bb
+    template<PieceColor Color>
+    void getPinnedPieces();
+
+private:
 
     template<PieceColor color>
     void movesForPawns(std::vector<Move>& moveList);
@@ -104,10 +119,11 @@ private:    /* helper functions */
     template<PieceColor color>
     void movesUnderCheck(std::vector<Move> &moveList);
 
-    template<PieceColor color> Bitboard pawnsPush();
-    template<PieceColor color> Bitboard pawnsPushDouble();
-    template<PieceColor color> Bitboard pawnsCaptureEast();
-    template<PieceColor color> Bitboard pawnsCaptureWest();
+protected:
+    template<PieceColor color> inline Bitboard pawnsPush();
+    template<PieceColor color> inline Bitboard pawnsPushDouble();
+    template<PieceColor color> inline Bitboard pawnsCaptureEast();
+    template<PieceColor color> inline Bitboard pawnsCaptureWest();
 
 };
 
@@ -115,9 +131,11 @@ inline void Position::setPiece(Piece piece, Square square)
 {
     assert(piece.type() != Empty);
 
+    const PieceColor color = piece.color();
+
     set_ref_bb(occupied_bb, square);
-    set_ref_bb(colored_bb[piece.color()], square);
-    set_ref_bb(pieces_bb[piece.color()][piece.type()], square);
+    set_ref_bb(colored_bb[color], square);
+    set_ref_bb(pieces_bb[color][piece.type()], square);
 
     piece_at[square] = piece;
 }
@@ -138,21 +156,23 @@ inline void Position::removePiece(Square square)
     assert(piece_at[square].type() != Empty);
 
     const Piece p = piece_at[square];
+    const PieceColor color = p.color();
 
     reset_ref_bb(occupied_bb, square);
-    reset_ref_bb(colored_bb[p.color()], square);
-    reset_ref_bb(pieces_bb[p.color()][p.type()], square);
+    reset_ref_bb(colored_bb[color], square);
+    reset_ref_bb(pieces_bb[color][p.type()], square);
 
     piece_at[square] = Piece(White, Empty);
 }
 
 // Sliding Piece Attacks source:
 // https://chessprogramming.wikispaces.com/Classical+Approach
+// gets the directional attack of a piece up to (and including) the first blocker piece.
 inline Bitboard rayPieceSteps(Bitboard occupied, Square origin, Direction dir) {
     Bitboard ray = directionStepsBB[origin][dir];
     Bitboard blocker = ray & occupied;
     if (blocker) {
-        Square blockerSquare = (dir < 3 || dir == 7)
+        Square blockerSquare = isDirectionPositive(dir)
                 ? lsb_bb(blocker)      // direction is positive - scan forward
                 : msb_bb(blocker);     // direction is nevatige - scan reverse
         ray ^= directionStepsBB[blockerSquare][dir];
@@ -181,10 +201,10 @@ inline Bitboard Position::attackersOf(Square square) {
     const Bitboard attackerRayPieses = attackerQueens | attackerRooks | attackerBishops;
 
     // check ray pieces
-    for (Direction dir = North; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
+    for (Direction dir = DIRECTION_FIRST; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
         Bitboard seenBy = rayPieceSteps(Occupied, square, dir) & attackerRayPieses;
         if (seenBy) {
-            if (dir == North || dir == East || dir == South || dir == West)
+            if ( isDirectionRook(dir) )
                 result |= seenBy & (attackerQueens | attackerRooks);
             else
                 result |= seenBy & (attackerQueens | attackerBishops);
@@ -215,17 +235,15 @@ inline bool Position::isAttackedBy(Square target) {
     const Bitboard attackerRayPieses = attackerQueens | attackerRooks | attackerBishops;
 
     // check ray pieces
-    for (Direction dir = North; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
+    for (Direction dir = DIRECTION_FIRST; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
         Bitboard seenBy = rayPieceSteps(Occupied, target, dir) & attackerRayPieses;
-        // TODO: remove outer if check
-        if (seenBy) {
-            if (dir == North || dir == East || dir == South || dir == West) {
-                if (seenBy & (attackerQueens | attackerRooks))
-                        return true;
-            } else {
-                if (seenBy & (attackerQueens | attackerBishops))
+        
+        if (isDirectionRook(dir)) {
+            if (seenBy & (attackerQueens | attackerRooks))
                     return true;
-            }
+        } else {
+            if (seenBy & (attackerQueens | attackerBishops))
+                return true;
         }
     }
 
@@ -255,9 +273,9 @@ inline bool Position::isPinned(Square pinned, Square toPiece, Direction ignored)
 
     Direction dir = fromToDirection[toPiece][pinned];
     
-    // note the ignored parameter is used for pieces moving along the pinned line (?) TODO: if pinned by multiple pieces
+    // note the ignored parameter is used for pieces moving along the pinned line  TODO: (?) if pinned by multiple pieces
     // for now ignored direction should also include the opposite direction, for pieces that move back along the checked line
-    if (dir == DIRECTION_CNT || dir == ignored || (dir == ((ignored+4) % DIRECTION_CNT) && ignored != DIRECTION_CNT) )
+    if (dir == NO_DIRECTION || dir == ignored || (dir == ((ignored+4) % DIRECTION_CNT) && ignored != NO_DIRECTION) )
         return false;
 
 
@@ -276,23 +294,47 @@ inline bool Position::isPinned(Square pinned, Square toPiece, Direction ignored)
         Piece attacker = pieceAt(attackerSquare);
         if (attacker.isQueen())
             return true;
-        if (attacker.isRook() && (dir == North || dir == East || dir == South || dir == West) )
+        if (attacker.isRook() && isDirectionRook(dir) )
             return true;
-        if (attacker.isBishop() && (dir == NorthEast || dir == SouthEast || dir == SouthWest || dir == NorthWest) )
+        if (attacker.isBishop() && isDirectionBishop(dir) )
             return true;
     }
     return false;
 }
 
+/*
 template<PieceColor color>
 inline bool Position::isAbsolutelyPinned(Square pinned, Direction ignored) {
-    Bitboard kingBB = pieces(color, King);
+    constexpr PieceColor Ally = color == White ? White : Black;
+    constexpr PieceColor Enemy = color == White ? Black : White;
 
-    assert(kingBB != 0UL);
-   
-    Square kingSquare = lsb_bb(kingBB);
+    Bitboard allyKings = pieces(Ally, King);
+    assert(allyKings != 0UL);
+    Square kingSquare = lsb_bb(allyKings);
 
     return isPinned<color>(pinned, kingSquare, ignored);
+}
+*/
+
+template<PieceColor Color>
+inline bool Position::isAbsolutelyPinned(Square pinned, Direction ignored) {
+    constexpr PieceColor Ally = Color == White ? White : Black;
+    constexpr PieceColor Enemy = Color == White ? Black : White;
+
+    Bitboard allyKings = pieces(Ally, King);
+    assert(allyKings != 0UL);
+    Square kingSquare = lsb_bb(allyKings);
+
+    // (1) find if the piece is in the pinned_bb set
+    if (is_set_bb(pinned_bb, pinned) == false)
+        return false;
+    
+    // (2) check that the piece isn't moving along the pinned direction
+    if (ignored != NO_DIRECTION && (ignored == fromToDirection[kingSquare][pinned] || ignored == fromToDirection[pinned][kingSquare]))
+        return false;
+
+    return true;
+
 }
 
 template<PieceColor color>
@@ -313,27 +355,69 @@ inline bool Position::isEnPasCaptureLegal(Square origin) {
         //Further, for strict legality, the ep capturing pawn should not be absolutely pinned, 
         //which additionally requires a horizontal pin test of both involved pawns, which disappear from the same *rank*.
 
-        // check that if king is on the same rank as the pawns, it is not pinned horizontaly
+        // check if the king is located on the same rank as the pawns, that he is not pinned horizontaly
         Direction dir = fromToDirection[kingSquare][epPawnSquare];
         if (dir == East || dir == West) {
             Bitboard occupied_set = occupied();
             reset_ref_bb(occupied_set, origin);
             reset_ref_bb(occupied_set, epPawnSquare);
             Bitboard ray = rayPieceSteps(occupied_set, kingSquare, dir) & colored(!color) & occupied_set;
-            if (ray) {
+            if (ray) {  
                 Square attackerSquare = pop_lsb_bb(ray);
                 Piece attacker = pieceAt(attackerSquare);
-                if (attacker.isQueen())
+                if ( attacker.isQueen() )
                     return false;
-                if (attacker.isRook() && (dir == North || dir == East || dir == South || dir == West) )
+                if ( attacker.isRook() && isDirectionRook(dir) )
                     return false;
-                if (attacker.isBishop() && (dir == NorthEast || dir == SouthEast || dir == SouthWest || dir == NorthWest) )
+                if ( attacker.isBishop() && isDirectionBishop(dir) )
                     return false;
             }
         }
     }
 
     return true;
+}
+
+template<PieceColor color>
+inline Bitboard Position::pawnsPush() {
+    if (color == White) {
+        return shift_bb<North>(pieces(White, Pawn)) & ~occupied();
+    }
+    else {
+        return shift_bb<South>(pieces(Black, Pawn)) & ~occupied();
+    }
+}
+
+template<PieceColor color>
+inline Bitboard Position::pawnsPushDouble() {
+    if (color == White) {
+        Bitboard firstPush = shift_bb<North>(pieces(White, Pawn) & Rank2_bb) & ~occupied();
+        return shift_bb<North>(firstPush) & ~occupied();
+    }
+    else {
+        Bitboard firstPush = shift_bb<South>(pieces(Black, Pawn) & Rank7_bb) & ~occupied();
+        return shift_bb<South>(firstPush) & ~occupied();
+    }
+}
+
+template<PieceColor color>
+inline Bitboard Position::pawnsCaptureEast() {
+    if (color == White) {
+        return shift_bb<NorthEast>(pieces(White, Pawn)) & colored(Black);
+    }
+    else {
+        return shift_bb<SouthEast>(pieces(Black, Pawn)) & colored(White);
+    }
+}
+
+template<PieceColor color>
+inline Bitboard Position::pawnsCaptureWest() {
+    if (color == White) {
+        return shift_bb<NorthWest>(pieces(White, Pawn)) & colored(Black);
+    }
+    else {
+        return shift_bb<SouthWest>(pieces(Black, Pawn)) & colored(White);
+    }
 }
 
 

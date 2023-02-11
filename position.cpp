@@ -24,6 +24,9 @@ void Position::movesForSide(PieceColor color, std::vector<Move> &moveList)
 {
 
     if (color == White) {
+
+        getPinnedPieces<White>();
+
         if (isKingAttacked<White>() ) {
             movesUnderCheck<White>(moveList);
         } else {
@@ -35,6 +38,9 @@ void Position::movesForSide(PieceColor color, std::vector<Move> &moveList)
             movesForKing<White>(moveList);
         }
     } else {
+
+        getPinnedPieces<Black>();
+
         if (isKingAttacked<Black>() ) {
             movesUnderCheck<Black>(moveList);
         } else {
@@ -44,6 +50,44 @@ void Position::movesForSide(PieceColor color, std::vector<Move> &moveList)
             movesForRayPieces<Black, Rook>(moveList);
             movesForRayPieces<Black, Queen>(moveList);
             movesForKing<Black>(moveList);
+        }
+    }
+}
+template<PieceColor Color>
+void Position::getPinnedPieces() {
+
+    constexpr PieceColor Ally = Color == White ? White : Black;
+    constexpr PieceColor Enemy = Color == White ? Black : White;
+
+    pinned_bb = 0UL;
+    Bitboard pinners = 0UL;
+
+    Bitboard allyKings = pieces(Ally, King);
+    Bitboard enemyBishopsAndQueens = pieces(Enemy, Bishop) | pieces(Enemy, Queen);
+    Bitboard enemyRooksAndQueens = pieces(Enemy, Rook) | pieces(Enemy, Queen);
+    Bitboard Occupied = occupied();
+
+    assert(allyKings != 0);
+
+    Square kingSquare = lsb_bb(allyKings);
+
+    for (Direction dir = DIRECTION_FIRST; dir < DIRECTION_CNT; dir = Direction(dir + 1)) {
+
+        // (1) find if an enemy bishop or queen or rook is on the directional ray
+        if (isDirectionBishop(dir)) {
+            pinners = (directionStepsBB[kingSquare][dir] & enemyBishopsAndQueens);
+        }
+        else if (isDirectionRook(dir)) {
+            pinners = (directionStepsBB[kingSquare][dir] & enemyRooksAndQueens);
+        }
+
+        if (pinners) {
+            // (2) get the closest pinner piece on the ray to the king
+            Square pinnerPiece = isDirectionPositive(dir) ? lsb_bb(pinners) : msb_bb(pinners);
+
+            // (3) find if there is a single pinned piece between the pinner and the king rays
+            Bitboard pinnedPiece = rayPieceSteps(Occupied, kingSquare, dir) & rayPieceSteps(Occupied, pinnerPiece, invDir(dir)) & colored(Ally);
+            pinned_bb |= pinnedPiece;
         }
     }
 }
@@ -179,9 +223,9 @@ void Position::movesForRayPieces(std::vector<Move>& moveList) {
     constexpr PieceColor Ally  = color == White ? White : Black;
     constexpr PieceColor Enemy = color == White ? Black : White;
 
-    constexpr Direction DirectionStart = (pieceType == Bishop)
-            ? NorthEast         // Start with diagolnal direction eg bishop
-            : North;            // Start with orthogonal direction eg queen and rook
+    constexpr Direction DirectionStart = (pieceType == Rook)
+            ? North         // Start with orthogonal +-direction eg rook
+            : NorthWest;    // Start with diagolnal x-direction eg queen and bishop
 
     constexpr std::uint8_t DirectionIncrement= (pieceType == Queen) // Rotate direction
                     ? 1                                          // by 45° for queen
@@ -244,7 +288,7 @@ void Position::movesForKing(std::vector<Move> &moveList)
     Bitboard  captures = stepsOn & colored(Enemy);
     stepsOn ^= captures;   // delete captures subset
 
-    //temporaly remove the King piece, in order to verify the movement of the checked King along the attacking direction.
+    //temporaly remove the King piece, in order to verify the movement of the checked King by isAttackedBy() along the attacking direction.
     Piece kingPiece = piece_at[origin];
     removePiece(origin);
 
@@ -297,7 +341,7 @@ void Position::movesForKing(std::vector<Move> &moveList)
     }
 }
 
-// TODO: add castling as a way to reach the target square
+// TODO: add castling as a way to reach the target square, (movesToSquare currently not used)
 template<PieceColor color>
 void Position::movesToSquare(Square target, std::vector<Move>& moveList) {
 
@@ -455,6 +499,9 @@ void Position::movesToSquareNoKing(Square target, std::vector<Move>& moveList) {
         }
         else if (pieceOrig.isKing()) {
             // king moves are ignored
+            /*if (isAttackedBy<Enemy>(target) == false) {
+                moveList.emplace_back(origin, target, pieceTrgt.isEmpty() ? QuietMove : Capture);
+            }*/
         }
         else { // knight, bishop, rook, queen
             if (isAbsolutelyPinned<Ally>(origin, fromToDirection[origin][target]) == false) {
@@ -477,7 +524,7 @@ void Position::movesUnderCheck(std::vector<Move>& moveList) {
     Bitboard attacker_set = attackersOf<Attacker>(kingSquare);
     assert(attacker_set != 0);
 
-    // get king moves, since the defend_ray direction can't contain king moves the set of moves is disjoint with the movesToSquare for the king piece
+    // get king moves, NOTE: since the defend_ray direction can't contain king moves the set of moves is disjoint with the movesToSquare for the king piece
     // TODO: the check for the king moves on defend_ray is currently done multiple times
     movesForKing<Defender>(moveList);
 
@@ -526,17 +573,17 @@ void Position::movesUnderCheck(std::vector<Move>& moveList) {
     }
 }
 
-// Singleton
+// Singleton, to initialize bitboards used for move generation
 struct GlobalsInitializer {
     GlobalsInitializer() {
 
         // Pawn steps array initialization
         for (Square origin = a1; origin <= h8; ++origin) {
-            for(Direction dir = NorthEast; dir < DIRECTION_CNT; dir = Direction(dir+2)) {
+            for(Direction dir = NorthWest; dir < DIRECTION_CNT; dir = Direction(dir+2)) {
                 int file = directionStepOffsets[dir][0] + origin.file();
                 int rank = directionStepOffsets[dir][1] + origin.rank();
                 if (file >= 0 && file < 8 && rank >= 0 && rank < 8) {
-                    if (dir == NorthEast || dir == NorthWest) { // white pawn
+                    if (dir == NorthWest || dir == NorthEast) { // white pawn
                         Square square(file,rank);
                         set_ref_bb(pawnCaptureStepsBB[White][origin], square);
                     } else if (dir == SouthEast || dir == SouthWest) { // black pawn
@@ -546,10 +593,11 @@ struct GlobalsInitializer {
                 }
             }
         }
+
         // Kings steps array initialization
         for (Square origin = a1; origin <= h8; ++origin) {
             Bitboard steps = 0;
-            for (Direction dir = North; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
+            for (Direction dir = DIRECTION_FIRST; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
                 int file = directionStepOffsets[dir][0] + origin.file();
                 int rank = directionStepOffsets[dir][1] + origin.rank();
                 if (file >= 0 && file < 8 && rank >= 0 && rank < 8)
@@ -570,9 +618,9 @@ struct GlobalsInitializer {
             knightStepsBB[origin] = steps;
         }
 
-        // Piece direction rays initialization
+        // Directional Piece rays initialization
         for (Square origin = a1; origin < SQUARE_CNT; ++origin) {
-            for (Direction dir = North; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
+            for (Direction dir = DIRECTION_FIRST; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
                 Square target = origin;
                 Bitboard steps = 0;
                 while(1) {
@@ -589,13 +637,13 @@ struct GlobalsInitializer {
             }
         }
 
-        // Square direction initialization
+        // From Square to Square direction initialization
         for (Square from = a1; from < SQUARE_CNT; ++from)
             for (Square to = a1; to < SQUARE_CNT; ++to)
-                fromToDirection[from][to] = DIRECTION_CNT;
+                fromToDirection[from][to] = NO_DIRECTION;
 
         for (Square from = a1; from < SQUARE_CNT; ++from) {
-            for (Direction dir = North; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
+            for (Direction dir = DIRECTION_FIRST; dir < DIRECTION_CNT; dir = Direction(dir+1)) {
                 for (Square to = a1; to < SQUARE_CNT; ++to) {
                     Bitboard ray = directionStepsBB[from][dir];
                     if (is_set_bb(ray, to))
@@ -605,43 +653,3 @@ struct GlobalsInitializer {
         }
     }
 } const globalsInitializer;
-
-
-
-template<PieceColor color>
-Bitboard Position::pawnsPush() {
-    if (color == White) {
-        return shift_bb<North>(pieces(White,Pawn)) & ~occupied();
-    } else {
-        return shift_bb<South>(pieces(Black,Pawn)) & ~occupied();
-    }
-}
-
-template<PieceColor color>
-Bitboard Position::pawnsPushDouble() {
-    if (color == White) {
-        Bitboard firstPush = shift_bb<North>(pieces(White,Pawn) & Rank2_bb) & ~occupied();
-        return shift_bb<North>(firstPush) & ~occupied();
-    } else {
-        Bitboard firstPush = shift_bb<South>(pieces(Black,Pawn) & Rank7_bb) & ~occupied();
-        return shift_bb<South>(firstPush) & ~occupied();
-    }
-}
-
-template<PieceColor color>
-Bitboard Position::pawnsCaptureEast() {
-    if (color == White) {
-        return shift_bb<NorthEast>(pieces(White,Pawn)) & colored(Black);
-    } else {
-        return shift_bb<SouthEast>(pieces(Black,Pawn)) & colored(White);
-    }
-}
-
-template<PieceColor color>
-Bitboard Position::pawnsCaptureWest() {
-    if (color == White) {
-        return shift_bb<NorthWest>(pieces(White,Pawn)) & colored(Black);
-    } else {
-        return shift_bb<SouthWest>(pieces(Black,Pawn)) & colored(White);
-    }
-}

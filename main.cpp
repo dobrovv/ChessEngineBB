@@ -37,6 +37,7 @@ ostream& print_board(const Board& b, ostream& os = std::cout) {
 
 // prints board with row ranks and column files
 ostream& print_board_with_files(const Board& b, ostream& os = std::cout) {
+    os << "   a  b  c  d  e  f  g  h  \n";
     os << " +------------------------+\n";
     for (Square i = a1; i < SQUARE_CNT; ++i) {
         if (i.file() == 0) {
@@ -155,6 +156,7 @@ uint64_t perft(Board& b, int depth){
 uint64_t divide(Board& b, int depth) {
 
     vector<Move> moveList;
+    moveList.reserve(256);
     uint64_t sumNodes = 0;
     b.movesForSide(b.sideToMove(), moveList);
     for (Move move : moveList) {
@@ -208,11 +210,25 @@ int main()
 
     Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
     //Perft results wiki: https://www.chessprogramming.org/Perft_Results
+    /*Initial
+        position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
+        perft(6) = 119,060,324
+        perft(7) = 3,195,901,860
+    */
     /*Kiwipete:
-        r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -
+        position fen r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq - moves
+        peft(6) = 8,031,647,685
      */
-    //Board board = Board::fromFEN("r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -");
+    /*Position 3
+        position fen 8/2p5/3p4/KP5r/1R3p1k/8/4P1P1/8 w - -
+        perft(8) = 3,009,794,393
+    */
+    /*Other:
+        https://www.chessprogramming.org/Lasker-Reichhelm_Position
+    */
     //Board board = Board::fromFEN("8/8/3p4/KPp4r/1R2Pp1k/8/6P1/8 b - e3");
+    
+    cout.imbue(std::locale("")); // use commas to decorate large integers
 
     while(1) {
         vector<string> args = getCommandArgs();
@@ -255,7 +271,75 @@ int main()
             //cout << "isAbsolutlyPinned:" << board.isAbsolutelyPinned<White>(d2) << endl;
             //cout << "isEnPasCaptureLegal:" << board.isEnPasCaptureLegal<White>(c5) << endl; 
             //cout << "E.p file and rank: " << (char)('a' + board.state.epSquare.file()) << " " << (int)(board.state.epSquare.rank() + 1) << endl;
-        } 
+            //cout << "Pinned pieces" << endl; print_bb(board.pinned_bb);
+        }
+        else if (args.size() == 1 && args[0] == "eval") {
+            cout << "Evaluation: " << board.evaluate() << "cp" << endl;
+            
+            Bitboard allyKnights = board.pieces(White, Knight);
+            Bitboard allyBishops = board.pieces(White, Bishop);
+            Bitboard allyRooks = board.pieces(White, Rook);
+            Bitboard allyQueens = board.pieces(White, Queen);
+            
+            cout << "-----------------------" << endl;
+            foreach_pop_lsb(origin, allyKnights) {
+                cout << "Knight at ";
+                print_square(origin);
+                cout << " mobility " << board.getMobilityForKnight<White>(origin) << endl;
+            }
+
+            foreach_pop_lsb(origin, allyBishops) {
+                cout << "Bishop at ";
+                print_square(origin);
+                cout << " mobility " << board.getMobilityForBishop<White>(origin) << endl;
+            }
+
+            foreach_pop_lsb(origin, allyRooks) {
+                cout << "Rook at ";
+                print_square(origin);
+                cout << " mobility " << board.getMobilityForRook<White>(origin) << endl;
+            }
+
+            foreach_pop_lsb(origin, allyQueens) {
+                cout << "Queen at ";
+                print_square(origin);
+                cout << " mobility " << board.getMobilityForQueen<White>(origin) << endl;
+            }
+            
+            cout << "-----------------------" << endl;
+
+            allyKnights = board.pieces(Black, Knight);
+            allyBishops = board.pieces(Black, Bishop);
+            allyRooks = board.pieces(Black, Rook);
+            allyQueens = board.pieces(Black, Queen);
+
+            foreach_pop_lsb(origin, allyKnights) {
+                cout << "Knight at ";
+                print_square(origin);
+                cout << " mobility " << board.getMobilityForKnight<Black>(origin) << endl;
+            }
+
+            foreach_pop_lsb(origin, allyBishops) {
+                cout << "Bishop at ";
+                print_square(origin);
+                cout << " mobility " << board.getMobilityForBishop<Black>(origin) << endl;
+            }
+
+            foreach_pop_lsb(origin, allyRooks) {
+                cout << "Rook at ";
+                print_square(origin);
+                cout << " mobility " << board.getMobilityForRook<Black>(origin) << endl;
+            }
+
+            foreach_pop_lsb(origin, allyQueens) {
+                cout << "Queen at ";
+                print_square(origin);
+                cout << " mobility " << board.getMobilityForQueen<Black>(origin) << endl;
+            }
+
+            cout << "-----------------------" << endl;
+
+        }
         else if ((args.size() == 3 && args[0] == "go" && args[1] == "perft")) {
             int depth = std::stoi(args[2]);
             auto start_time = std::chrono::high_resolution_clock::now();
@@ -266,6 +350,45 @@ int main()
             delta_ms = std::max(delta_ms, 1); // prevent the good old divide by 0 problem :)
 
             cout << "Perft(" << depth << "): " << result << " nodes " << delta_ms << "ms " << (result / delta_ms * 1000) << " nodes/s" << endl;
+            cout << " " << endl;
+        }
+        else if (args.size() == 3 && args[0] == "go" && args[1] == "depth") {
+            ExtMove result;
+            int depth = std::stoi(args[2]);
+
+            auto start_time = std::chrono::high_resolution_clock::now();
+            uint64_t nodesSearched = board.search(result, depth);
+            auto stop_time = std::chrono::high_resolution_clock::now();
+
+            int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
+            delta_ms = std::max(delta_ms, 1);
+
+            cout << "Best move: ";
+            print_move(result.move);
+            cout << "    value: " << result.val << " c.p.   " << nodesSearched << " nodes " << delta_ms << "ms " << (nodesSearched / delta_ms * 1000) << " nodes/s" << endl;
+        }
+        else if (args.size() >= 2 && args[0] == "go" && args[1] == "auto") {
+            ExtMove result;
+            int depth = 4;
+            if (args.size() == 3)
+                depth = std::stoi(args[2]);
+            
+            auto start_time = std::chrono::high_resolution_clock::now();
+            
+            uint64_t nodesSearched = board.search(result, depth);
+            
+            auto stop_time = std::chrono::high_resolution_clock::now();
+            int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
+            delta_ms = std::max(delta_ms, 1);
+
+            cout << "Best move: ";
+            print_move(result.move);
+            cout << "   eval: " << result.val << " c.p.   " << nodesSearched << " nodes\t" << (nodesSearched / delta_ms * 1000) << " nodes/s" << endl;
+            
+            if (result.move.isValid()) {
+                board.moveDo(result.move);
+                print_board_with_files(board) << '\n';
+            }
         }
         else {
             cout << "Invalid command." << endl;

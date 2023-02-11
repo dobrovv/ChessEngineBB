@@ -59,28 +59,28 @@ void Board::moveDo(Move move)
 
     /* make positional changes */
     if (moveType == QuietMove) {
-        removePiece(move.origin() );
-        setPiece(piece, move.target() );
+        removePiece(origin );
+        setPiece(piece, target );
 
 
     } else if (moveType == Capture) {
-        captured_pieses.emplace_back(pieceAt(move.target() )); // store captured piece
-        removePiece(move.origin() );
-        removePiece(move.target() );
-        setPiece(piece, move.target() );
+        captured_pieses.emplace_back(pieceAt(target)); // store captured piece
+        removePiece(origin);
+        removePiece(target);
+        setPiece(piece, target);
 
     } else if (moveType == DoublePush) {
-        removePiece(move.origin() );
-        setPiece(piece, move.target() );
+        removePiece(origin);
+        setPiece(piece, target);
 
     } else if (move.isPromotion() ) {
         if (move.isCapture() ) {
-            captured_pieses.emplace_back(pieceAt(move.target() )); // store captured piece
-            removePiece(move.target() );
+            captured_pieses.emplace_back(pieceAt(target)); // store captured piece
+            removePiece(target);
         }
-        removePiece(move.origin() );
+        removePiece(origin);
         piece.setType(move.promoteTo() );
-        setPiece(piece, move.target() );
+        setPiece(piece, target);
 
     } else if (move.isCastle()) {
         if (move.type() == CastleQSide) {
@@ -88,28 +88,28 @@ void Board::moveDo(Move move)
             const Square rookQTarget = piece.color() == White ? Square(d1) : Square(d8);
             setPiece(pieceAt(rookQSide), rookQTarget);
             removePiece(rookQSide);
-            removePiece(move.origin() );
-            setPiece(piece, move.target() );
+            removePiece(origin );
+            setPiece(piece, target );
         } else {
             const Square rookKSide   = piece.color() == White ? Square(h1) : Square(h8);
             const Square rookKTarget = piece.color() == White ? Square(f1) : Square(f8);
             setPiece(pieceAt(rookKSide), rookKTarget);
             removePiece(rookKSide);
-            removePiece(move.origin() );
-            setPiece(piece, move.target() );
+            removePiece(origin );
+            setPiece(piece, target );
         }
 
     } else if (moveType == CaptureEnPas) {
         Square capturedPawn = piece.color() == White
-                ? move.target().prevRank()
-                : move.target().nextRank();
+                ? target.prevRank()
+                : target.nextRank();
         captured_pieses.emplace_back(pieceAt(capturedPawn) ); // store captured pawn
         removePiece(capturedPawn);
-        removePiece(move.origin() );
-        setPiece(piece, move.target() );
+        removePiece(origin );
+        setPiece(piece, target );
     }
     else {
-        assert(false); // invalid move in moveUndo
+        assert(false); // invalid move in moveDo
     }
 
     moves_done.emplace_back(move);
@@ -118,53 +118,60 @@ void Board::moveDo(Move move)
 
 void Board::moveUndo()
 {
-    Move move = moves_done.back();
-    MoveType moveType = move.type();
-    Piece pieceOrig = pieceAt(move.target());
+    const Move move = moves_done.back();
+    
+    const Square origin = move.origin();
+    const Square target = move.target();
+    
+    const Piece pieceOrig = pieceAt(target);
+    const MoveType moveType = move.type();
+
 
     if (moveType == QuietMove) {
-        removePiece(move.target() );
-        setPiece(pieceOrig, move.origin() );
+        removePiece(target );
+        setPiece(pieceOrig, origin );
     } else if (moveType == Capture) {
-        removePiece(move.target() );
-        setPiece(captured_pieses.back(), move.target() );
+        removePiece(target );
+        setPiece(captured_pieses.back(), target );
         captured_pieses.pop_back();
-        setPiece(pieceOrig, move.origin() );
+        setPiece(pieceOrig, origin );
 
     } else if (moveType == DoublePush) {
-        removePiece(move.target() );
-        setPiece(pieceOrig, move.origin() );
+        removePiece(target );
+        setPiece(pieceOrig, origin );
     } else if (move.isPromotion() ) {
-        removePiece(move.target());
+        removePiece(target);
         if (move.isCapture() ) {
-            setPiece(captured_pieses.back(), move.target() );
+            setPiece(captured_pieses.back(), target );
             captured_pieses.pop_back();
         }
-        setPiece(pieceOrig.color(), Pawn, move.origin());
+        setPiece(pieceOrig.color(), Pawn, origin);
     } else if (move.isCastle()) {
         if (move.type() == CastleQSide) {
             const Square rookQSide   = pieceOrig.color() == White ? Square(a1) : Square(a8);
             const Square rookQTarget = pieceOrig.color() == White ? Square(d1) : Square(d8);
             removePiece(rookQTarget);
             setPiece(pieceOrig.color(), Rook, rookQSide);
-            removePiece(move.target() );
-            setPiece(pieceOrig, move.origin() );
+            removePiece(target );
+            setPiece(pieceOrig, origin );
         } else {
             const Square rookKSide   = pieceOrig.color() == White ? Square(h1) : Square(h8);
             const Square rookKTarget = pieceOrig.color() == White ? Square(f1) : Square(f8);
             removePiece(rookKTarget);
             setPiece(pieceOrig.color(), Rook, rookKSide);
-            removePiece(move.target() );
-            setPiece(pieceOrig, move.origin() );
+            removePiece(target );
+            setPiece(pieceOrig, origin );
         }
     } else if (moveType == CaptureEnPas) {
         Square capturedPawn = pieceOrig.color() == White
-                ? move.target().prevRank()
-                : move.target().nextRank();
+                ? target.prevRank()
+                : target.nextRank();
         setPiece(captured_pieses.back(), capturedPawn);
         captured_pieses.pop_back();
-        removePiece(move.target() );
-        setPiece(pieceOrig, move.origin() );
+        removePiece(target );
+        setPiece(pieceOrig, origin );
+    } else {
+        assert(false); // invalid move in moveUndo
     }
 
     moves_done.pop_back();
@@ -260,4 +267,129 @@ Board Board::fromFEN(std::string fenRecord)
 
 Board Board::startpos() {
     return Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
+}
+
+int32_t Board::evaluate() {
+
+    // weight in centipawns
+    const static int PieceWeight[TYPE_CNT] = {
+        0,      // Empty
+        100,     // Pawn
+        300,     // Knight,
+        300,     // Bishop, 
+        500,     // Rook, 
+        900,     // Queen
+        0,      // King
+    };
+
+    const static int MobilityWeight = 1;
+
+    int32_t materialScore = 0;
+
+    for ( PieceType pt = Pawn; pt < King; pt=PieceType(pt+1) ) {
+        materialScore += PieceWeight[pt] * (popcount_bb(pieces(White, pt)) - popcount_bb(pieces(Black, pt)));
+    }
+    
+    /*
+    std::vector<Move> tmpWhiteMoves;
+    std::vector<Move> tmpBlackMoves;
+    tmpWhiteMoves.reserve(256);
+    tmpBlackMoves.reserve(256);
+
+    movesForSide(White, tmpWhiteMoves);
+    movesForSide(Black, tmpBlackMoves);
+
+    uint32_t whiteMobility = tmpWhiteMoves.size();
+    uint32_t blackMobility = tmpBlackMoves.size();
+    
+    uint32_t mobilityScore = MobilityWeight * (tmpWhiteMoves.size() - tmpBlackMoves.size());
+    */
+    
+    getPinnedPieces<White>();
+    int32_t whiteMobility = getMobilityScore<White>();
+    
+    getPinnedPieces<Black>();
+    int32_t blackMobility = getMobilityScore<Black>();
+
+    int32_t mobilityScore = MobilityWeight * (whiteMobility - blackMobility);
+    
+
+    return materialScore+mobilityScore;
+}
+
+
+
+uint64_t Board::search(ExtMove& result, int depth) {
+    int bestValue;
+    Move bestMove;
+    
+    uint64_t nodesSearched
+        = searchDo(depth, bestValue, bestMove);
+    
+    result.val = bestValue;
+    result.move = bestMove;
+
+    return nodesSearched;
+
+
+}
+
+uint64_t Board::searchDo(int depth, int& bestValue, Move& bestMove) {
+
+    const PieceColor Side = sideToMove();
+
+    int tmpValue = 1000000 * (Side == Black ? 1 : -1);
+    Move tmpMove;
+    uint64_t nodesSearched = 0;
+
+    
+    if (depth == 1) {
+        std::vector<Move> moves;
+        moves.reserve(256);
+        movesForSide(sideToMove(), moves);
+
+        for (Move move: moves) {
+            moveDo(move);
+
+            int val = evaluate();
+            if (Side == White && val > tmpValue || Side == Black && val < tmpValue ) {
+                tmpValue = val;
+                tmpMove = move;
+            }
+
+            moveUndo();
+        }
+        nodesSearched += moves.size();
+
+        bestValue = tmpValue;
+        bestMove = tmpMove;
+    }
+    else {
+        std::vector<Move> moves;
+        moves.reserve(256);
+        movesForSide(sideToMove(), moves);
+        
+        int val;
+        Move moveBellow;
+
+        for (Move move : moves) {
+            moveDo(move);
+            
+            nodesSearched 
+                += searchDo(depth - 1, val, moveBellow);
+            
+            if (Side == White && val > tmpValue || Side == Black && val < tmpValue) {
+                tmpValue = val;
+                tmpMove = move;
+            }
+
+            moveUndo();
+        }
+
+        bestValue = tmpValue;
+        bestMove = tmpMove;
+    }
+
+    return nodesSearched;
+    
 }

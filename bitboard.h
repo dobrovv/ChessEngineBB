@@ -79,9 +79,11 @@ inline int popcount_bb(Bitboard bboard) {
     return __builtin_popcountll(bboard);
 }
 
-#elif N_MSC_VER
+#elif _MSC_VER
+// or _mm_popcnt_u64 with SSE4 and <nmmintrin.h>
+#include <intrin.h>
 inline int popcount_bb(Bitboard bboard) {
-    
+    return __popcnt64(bboard);
 }
 
 #else
@@ -106,12 +108,17 @@ inline Square msb_bb(Bitboard bboard) {
     assert(bboard != 0);
     return __builtin_clzll(bboard) ^ 63;
 }
-#elif N_MSC_VER
-inline Square lsb_bb(Bitboard bboard) {
 
+#elif _MSC_VER
+#include <intrin.h>
+inline Square lsb_bb(Bitboard bboard) {
+    assert(bb != 0);
+    return _tzcnt_u64(bboard);
 }
 
 inline Square msb_bb(Bitboard bboard) {
+    assert(bb != 0);
+    return _lzcnt_u64(bboard) ^ 63;
 
 }
 #else
@@ -175,7 +182,7 @@ inline Square pop_msb_bb(Bitboard &bboard) {
     return square;
 }
 
-//TODO: replace square by uint8_t
+//TODO: (?) replace square by uint8_t
 #define foreach_pop_lsb(square, bboard) for (Square square; (bboard) && ((square = pop_lsb_bb(bboard)) || true);)
 
 #endif // BITBOARD_H
