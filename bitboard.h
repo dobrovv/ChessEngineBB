@@ -98,7 +98,7 @@ inline int popcount_bb(Bitboard n) {
 ///////////////////////////////////////////
 // Bitscans Forward(lsb) and Reverse(msb)//
 ///////////////////////////////////////////
-#ifdef __GNUC__
+#if  defined(__GNUC__) || defined(__clang__)
 inline Square lsb_bb(Bitboard bboard) {
     assert(bboard != 0);
     return __builtin_ctzll(bboard);
@@ -108,7 +108,6 @@ inline Square msb_bb(Bitboard bboard) {
     assert(bboard != 0);
     return __builtin_clzll(bboard) ^ 63;
 }
-
 #elif _MSC_VER
 #include <intrin.h>
 inline Square lsb_bb(Bitboard bboard) {

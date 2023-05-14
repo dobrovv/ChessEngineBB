@@ -367,6 +367,21 @@ int main()
             print_move(result.move);
             cout << "    value: " << result.val << " c.p.   " << nodesSearched << " nodes " << delta_ms << "ms " << (nodesSearched / delta_ms * 1000) << " nodes/s" << endl;
         }
+        else if (args.size() == 3 && args[0] == "go" && args[1] == "depthAB") {
+            ExtMove result;
+            int depth = std::stoi(args[2]);
+
+            auto start_time = std::chrono::high_resolution_clock::now();
+            uint64_t nodesSearched = board.searchAB(result, depth);
+            auto stop_time = std::chrono::high_resolution_clock::now();
+
+            int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
+            delta_ms = std::max(delta_ms, 1);
+
+            cout << "Best move: ";
+            print_move(result.move);
+            cout << "    value: " << result.val << " c.p.   " << nodesSearched << " nodes " << delta_ms << "ms " << (nodesSearched / delta_ms * 1000) << " nodes/s" << endl;
+        }
         else if (args.size() >= 2 && args[0] == "go" && args[1] == "auto") {
             ExtMove result;
             int depth = 4;
@@ -375,7 +390,7 @@ int main()
             
             auto start_time = std::chrono::high_resolution_clock::now();
             
-            uint64_t nodesSearched = board.search(result, depth);
+            uint64_t nodesSearched = board.searchAB(result, depth);
             
             auto stop_time = std::chrono::high_resolution_clock::now();
             int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
@@ -390,7 +405,9 @@ int main()
                 print_board_with_files(board) << '\n';
             }
         }
-        else {
+        else if (args.size() == 1 && args[0] == "q" || args[0] == "quit" || args[0] == "exit") {
+            exit(0);
+        } else {
             cout << "Invalid command." << endl;
         }
 

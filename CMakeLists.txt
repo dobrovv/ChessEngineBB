@@ -3,6 +3,7 @@
 # and oldest tested versions of CMake. This will ensure
 # you pick up the best policies.
 cmake_minimum_required(VERSION 3.1...3.25)
+
 set (CMAKE_SYSTEM_VERSION 10.0.19041.0) # vsstudio
 
 if (CMAKE_BUILD_TYPE STREQUAL "")
@@ -23,7 +24,7 @@ endif ()
 # Listing the version is nice here since it sets lots of useful variables
 project(
   ChessEngineBB
-  VERSION 1.0
+  VERSION 0.2
   LANGUAGES CXX)
 
 # LLVM SUPPORT  

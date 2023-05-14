@@ -44,7 +44,7 @@ public:
     Piece  piece_at[SQUARE_CNT];
 
     PositionState state;
-    PieceColor side;      // next player to move
+    PieceColor side;      // sideToMove next player to move
 
     Bitboard pinned_bb;
 

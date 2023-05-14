@@ -2,6 +2,8 @@
 #include <iterator>
 #include <iostream>
 #include <sstream> // for FEN 
+#include <limits> // INT_MAX, INT_MIN
+#include <algorithm> //std::min, std::max
 
 Board::Board()
 {
@@ -338,7 +340,7 @@ uint64_t Board::searchDo(int depth, int& bestValue, Move& bestMove) {
 
     const PieceColor Side = sideToMove();
 
-    int tmpValue = 1000000 * (Side == Black ? 1 : -1);
+    int tmpValue = (Side == Black ? INT_MAX : -INT_MAX); // note INT_MIN = -INT_MAX-1
     Move tmpMove;
     uint64_t nodesSearched = 0;
 
@@ -393,3 +395,97 @@ uint64_t Board::searchDo(int depth, int& bestValue, Move& bestMove) {
     return nodesSearched;
     
 }
+
+uint64_t Board::searchAB(ExtMove& result, int depth) {
+    int bestValue;
+    Move bestMove;
+
+    int alpha = -INT_MAX; // note INT_MIN = -INT_MAX-1
+    int beta = INT_MAX;
+    
+    uint64_t nodesSearched
+        = searchDoAB(depth, bestValue, bestMove, alpha, beta, sideToMove() == White);
+    
+    result.val = bestValue;
+    result.move = bestMove;
+
+    return nodesSearched;
+}
+
+uint64_t Board::searchDoAB(int depth, int& nodeValue, Move& bestMove, int alpha, int beta, bool isMaxTurn) {
+    
+    int nodesSearched = 0;
+    int val;
+    Move moveBellow;
+
+    nodeValue = (isMaxTurn ? -INT_MAX : INT_MAX); // ?
+
+    std::vector<Move> moves;
+    moves.reserve(256);
+    movesForSide(sideToMove(), moves);
+
+
+    if (depth == 1) {
+        for (Move move : moves) {
+        
+            // alpha-beta pruning
+            if (alpha >= beta) {
+                break;
+            }
+
+            moveDo(move);
+            val = evaluate();    
+            nodesSearched += 1;
+            
+            if (isMaxTurn) {
+                if (val > alpha) {
+                    alpha = val; 
+                    nodeValue = val;
+                    bestMove = move;
+                }
+            } else {
+                if (val < beta) {
+                    beta = val;
+                    nodeValue = val;
+                    bestMove = move;
+                }
+            }
+
+            moveUndo();
+        }
+    } else {
+        for (Move move : moves) {
+            
+            // alpha-beta pruning
+            if (alpha >= beta) {
+                break;
+            }
+
+            moveDo(move);
+            
+            nodesSearched 
+                += searchDoAB(depth - 1, val, moveBellow, alpha, beta, !isMaxTurn);
+            
+            
+            if (isMaxTurn) {
+                if (val > alpha) {
+                    alpha = val; 
+                    nodeValue = val;
+                    bestMove = move;
+                }
+            } else {
+                if (val < beta) {
+                    beta = val;
+                    nodeValue = val;
+                    bestMove = move;
+                }
+            }
+
+            moveUndo();
+        }
+    }
+
+    return nodesSearched;
+}
+
+

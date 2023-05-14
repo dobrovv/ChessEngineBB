@@ -50,6 +50,11 @@ public:
 
     uint64_t searchDo(int depth, int& bestValue, Move& bestMove);
 
+    uint64_t searchAB(ExtMove& result, int depth = 5);
+
+    uint64_t searchDoAB(int depth, int& bestValue, Move& bestMove, int alpha, int beta, bool isMaxTurn);
+
+
 };
 
 template <PieceColor Color>
@@ -137,7 +142,7 @@ uint32_t Board::getMobilityForBishop(Square origin) {
     constexpr PieceColor Enemy = Color == White ? Black : White;
 
     constexpr Direction DirectionStart = NorthWest;     // Start with diagolnal x-direction eg queen and bishop
-    constexpr std::uint8_t DirectionIncrement = 2;      // rotate by 90° for rook and bishop
+    constexpr std::uint8_t DirectionIncrement = 2;      // rotate by 90ï¿½ for rook and bishop
 
     constexpr Bitboard Ranks2and3 = Color == White ? (Rank2_bb | Rank3_bb) : (Rank7_bb | Rank6_bb);
 
@@ -186,7 +191,7 @@ uint32_t Board::getMobilityForRook(Square origin) {
     constexpr PieceColor Enemy = Color == White ? Black : White;
 
     constexpr Direction DirectionStart = North;     // Start with vertival direction eg rook
-    constexpr std::uint8_t DirectionIncrement = 2;  // rotate by 90° for rook and bishop
+    constexpr std::uint8_t DirectionIncrement = 2;  // rotate by 90ï¿½ for rook and bishop
 
     constexpr Bitboard Ranks2and3 = Color == White ? (Rank2_bb | Rank3_bb) : (Rank7_bb | Rank6_bb);
 
@@ -236,7 +241,7 @@ uint32_t Board::getMobilityForQueen(Square origin) {
     constexpr PieceColor Enemy = Color == White ? Black : White;
 
     constexpr Direction DirectionStart = NorthWest;   // Start with diagolnal x-direction eg queen and bishop
-    constexpr std::uint8_t DirectionIncrement = 1;    // rotate by 45° for queen
+    constexpr std::uint8_t DirectionIncrement = 1;    // rotate by 45ï¿½ for queen
 
     constexpr Bitboard Ranks2and3 = Color == White ? (Rank2_bb | Rank3_bb) : (Rank7_bb | Rank6_bb);
 
