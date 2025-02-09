@@ -1,4 +1,5 @@
 #include "board.h"
+#include "search.h"
 #include <iterator>
 #include <iostream>
 #include <sstream> // for FEN 
@@ -7,6 +8,47 @@
 
 Board::Board()
 {
+    table = std::make_shared<TT>(256);
+}
+
+Board::~Board() {
+    //free(table);
+}
+
+std::vector<Move> Board::getPrimaryVariation(Move bestMove) {
+    Board& b = *this;
+    std::vector<Move> pvmvs;
+
+    b.moveDo(bestMove);
+    pvmvs.push_back(bestMove);
+    
+    // make the best known move - the first in pv sequence
+    // get the next move from the TT table
+    TTEntry* cell = b.table->cell(b.state.hash);
+    while (cell->key == b.state.hash) {
+        MoveList legalMoves;
+        generate_all_moves(b, legalMoves);
+
+        // verify that the hashed move is legal
+        bool isLegal = false;
+        for ( Move legalMove : legalMoves )
+            if ( cell->move == legalMove )
+                isLegal = true;
+
+        if ( !isLegal )
+            break;
+
+        b.moveDo(cell->move);
+        pvmvs.push_back(cell->move);
+        cell = b.table->cell(b.state.hash);
+    }
+
+    // undo moves
+    for (int i = pvmvs.size() - 1; i >= 0; --i) {
+        b.moveUndo();
+    }
+
+    return pvmvs;
 }
 
 void Board::moveDo(Move move)
@@ -16,17 +58,27 @@ void Board::moveDo(Move move)
     const Square origin     = move.origin();
     const Square target     = move.target();
     Piece piece = pieceAt(origin);
+    PieceType pieceType = piece.type();
 
     /* handle state changes */
 
     // save the previous state of the position
     state_stack.emplace_back(positionState());
 
+    // Remove en passant square from the hash
+    // Note that state here referes still to the old state before the move
+    if (state.epSquare != NOT_ENPASSANT)
+        state.hash ^= Zobrist::enpassant[state.epSquare.file()];
+
     // set en passant square
     if (moveType == DoublePush) {
         state.epSquare = piece.color() == White
                 ? target.prevRank()
                 : target.nextRank();
+
+        // Hash the enpassant move
+        state.hash ^= Zobrist::enpassant[state.epSquare.file()];
+
     } else {
         state.epSquare = NOT_ENPASSANT;
     }
@@ -40,7 +92,7 @@ void Board::moveDo(Move move)
 
     // handle castling rights
     const Bitboard originBB   = SHL(1,origin);
-    static const Bitboard castleOriginSquares = SHL(1,e1) | SHL(1,e8)
+    constexpr Bitboard castleOriginSquares = SHL(1,e1) | SHL(1,e8)
             | SHL(1,a1) | SHL(1,h1) | SHL(1,a8) | SHL(1,h8);
 
     if (castleOriginSquares & originBB) {
@@ -57,13 +109,16 @@ void Board::moveDo(Move move)
         } else if (origin == h8) { // bk rook moves
             state.castle_rights &= ~(CastlingFlagBK);
         }
+
+        // Hash the change in castling rights
+        state.hash ^= Zobrist::castling[state_stack.back().castle_rights]; // remove old castling flags
+        state.hash ^= Zobrist::castling[state.castle_rights];              // set new castling flags
     }
 
     /* make positional changes */
     if (moveType == QuietMove) {
         removePiece(origin );
-        setPiece(piece, target );
-
+        setPiece(piece, target);
 
     } else if (moveType == Capture) {
         captured_pieses.emplace_back(pieceAt(target)); // store captured piece
@@ -116,6 +171,7 @@ void Board::moveDo(Move move)
 
     moves_done.emplace_back(move);
     side = !side;
+    state.hash ^= Zobrist::black_to_move;
 }
 
 void Board::moveUndo()
@@ -183,6 +239,27 @@ void Board::moveUndo()
     setPositionState(state_stack.back());
     state_stack.pop_back();
 
+}
+
+Key Board::hashPosition(const Position &pos) {
+
+    Key key = 0;
+
+    for (int sq = 0; sq < SQUARE_CNT; sq++) {
+        Piece piece = pos.pieceAt(sq);
+        if (!piece.isEmpty())
+            key ^= Zobrist::pieces[piece.color()][sq][piece.type()];
+    }
+
+    if (pos.sideToMove() == Black)
+        key ^= Zobrist::black_to_move;
+    
+    key ^= Zobrist::castling[pos.castling()];
+
+    if ( pos.enPassantSq() != NOT_ENPASSANT )
+        key ^= Zobrist::enpassant[pos.enPassantSq().file()];
+
+    return key;
 }
 
 Board Board::fromFEN(std::string fenRecord)
@@ -264,228 +341,136 @@ Board Board::fromFEN(std::string fenRecord)
         board.state.halfmove_clock = atoi(records[4].c_str());
     }
 
+    board.state.hash = hashPosition(board);
+
     return board;
 }
+
+std::string Board::toFEN() const {
+    
+    const Position& pos = *this;
+
+    int rank = 7;
+    //int file = 0;
+
+    std::string res;
+
+    while (rank >= 0) {
+        int fileOnRank = 0;
+        int empty = 0;
+
+        // Print pieces
+        while (fileOnRank < 8) {
+            Piece piece = pos.pieceAt(Square(fileOnRank, rank));
+
+            // Count only empty squares and print the total number
+            if (piece.isEmpty() && fileOnRank == 7) {
+               res += std::to_string(empty+1);
+               empty = 0;
+            } else if ( piece.isEmpty() ) {
+                empty++;
+            } else if ( !piece.isEmpty() && empty ) {
+                res += std::to_string(empty);
+                empty = 0;
+            }
+
+            if ( piece.isPawn() ) {
+                res += piece.isWhite() ? "P" : "p";
+            } else if ( piece.isKnight() ) {
+                res += piece.isWhite() ? "N" : "n";
+            } else if ( piece.isBishop() ) {
+                res += piece.isWhite() ? "B" : "b";
+            } else if ( piece.isRook() ) {
+                res += piece.isWhite() ? "R" : "r";
+            } else if ( piece.isQueen() ) {
+                res += piece.isWhite() ? "Q" : "q";
+            } else if (piece.isKing()) {
+                res += piece.isWhite() ? "K" : "k";
+            }
+
+            // Print / at the end of a rank unless rank is 0
+            if (fileOnRank == 7 && rank != 0) {
+                res += "/";
+            }
+
+            fileOnRank++;
+        }
+        
+        rank--;
+        fileOnRank = 0;
+    }
+
+    res += " ";
+
+    // Print the side to move
+    if (pos.sideToMove() == White)
+        res += "w";
+    else
+        res += "b";
+
+    res += " ";
+
+    // Print castling rights
+    std::uint8_t castling = pos.castling();
+    if (castling == NoCastlingFlags) {
+        res += "-";
+    } else {
+        if (castling & CastlingFlagWK)
+            res += "K";
+        if (castling & CastlingFlagWQ)
+            res += "Q";
+        if (castling & CastlingFlagBK)
+            res += "k";
+        if (castling & CastlingFlagBQ)
+            res += "q";
+    }
+
+
+    res += " ";
+
+    // Print en passant square
+    Square enPassant = pos.enPassantSq(); 
+    if ( enPassant != NOT_ENPASSANT ) {
+        char symbolic[3] = "";
+        symbolic[0] = 'a' + enPassant.file();
+        symbolic[1] = '1' + enPassant.rank();
+        res += symbolic;
+    } else {
+        res += "-";
+    }
+
+    res += " ";
+    
+    // Print halfmove_clock
+    res += std::to_string(pos.halfmove_clock());
+
+    res += " ";
+    
+    // Print move count
+    res += "0";
+
+
+    return res;
+}
+
 
 Board Board::startpos() {
     return Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
 }
 
-int32_t Board::evaluate() {
-
-    // weight in centipawns
-    const static int PieceWeight[TYPE_CNT] = {
-        0,      // Empty
-        100,     // Pawn
-        300,     // Knight,
-        300,     // Bishop, 
-        500,     // Rook, 
-        900,     // Queen
-        0,      // King
-    };
-
-    const static int MobilityWeight = 1;
-
-    int32_t materialScore = 0;
-
-    for ( PieceType pt = Pawn; pt < King; pt=PieceType(pt+1) ) {
-        materialScore += PieceWeight[pt] * (popcount_bb(pieces(White, pt)) - popcount_bb(pieces(Black, pt)));
-    }
-    
-    /*
-    std::vector<Move> tmpWhiteMoves;
-    std::vector<Move> tmpBlackMoves;
-    tmpWhiteMoves.reserve(256);
-    tmpBlackMoves.reserve(256);
-
-    movesForSide(White, tmpWhiteMoves);
-    movesForSide(Black, tmpBlackMoves);
-
-    uint32_t whiteMobility = tmpWhiteMoves.size();
-    uint32_t blackMobility = tmpBlackMoves.size();
-    
-    uint32_t mobilityScore = MobilityWeight * (tmpWhiteMoves.size() - tmpBlackMoves.size());
-    */
-    
-    getPinnedPieces<White>();
-    int32_t whiteMobility = getMobilityScore<White>();
-    
-    getPinnedPieces<Black>();
-    int32_t blackMobility = getMobilityScore<Black>();
-
-    int32_t mobilityScore = MobilityWeight * (whiteMobility - blackMobility);
-    
-
-    return materialScore+mobilityScore;
+Value Board::evaluate() {
+    Position& pos = *this; 
+    return ::evaluate(pos);
 }
-
-
 
 uint64_t Board::search(ExtMove& result, int depth) {
-    int bestValue;
-    Move bestMove;
-    
-    uint64_t nodesSearched
-        = searchDo(depth, bestValue, bestMove);
-    
-    result.val = bestValue;
-    result.move = bestMove;
-
-    return nodesSearched;
-
-
+    return ::search(*this, result, depth);
 }
 
-uint64_t Board::searchDo(int depth, int& bestValue, Move& bestMove) {
+// Positions taking too long to evaluate
+// position fen rnbqkbnr/pppp1ppp/4p3/8/8/4P3/PPPP1PPP/RNBQKBNR w KQkq - 0 0
+// position startpos moves e2e4 d7d5 f1d3 d5e4 d3e4 g8f6 e4f3 e7e5 b1c3 a7a5 d2d3 b8c6 d1e2 d8e7 g1h3 c6d4 e2d1 h7h5 e1g1 c8g4 c3d5 - takes too long on depth 5
+// position startpos moves g1f3 d7d5 d2d4 c8f5 e2e3 d8d6 b1c3 b8c6 f1b5 a7a6 b5a4 b7b5 a4b3 -  takes longer on depth 4
 
-    const PieceColor Side = sideToMove();
-
-    int tmpValue = (Side == Black ? INT_MAX : -INT_MAX); // note INT_MIN = -INT_MAX-1
-    Move tmpMove;
-    uint64_t nodesSearched = 0;
-
-    
-    if (depth == 1) {
-        std::vector<Move> moves;
-        moves.reserve(256);
-        movesForSide(sideToMove(), moves);
-
-        for (Move move: moves) {
-            moveDo(move);
-
-            int val = evaluate();
-            if (Side == White && val > tmpValue || Side == Black && val < tmpValue ) {
-                tmpValue = val;
-                tmpMove = move;
-            }
-
-            moveUndo();
-        }
-        nodesSearched += moves.size();
-
-        bestValue = tmpValue;
-        bestMove = tmpMove;
-    }
-    else {
-        std::vector<Move> moves;
-        moves.reserve(256);
-        movesForSide(sideToMove(), moves);
-        
-        int val;
-        Move moveBellow;
-
-        for (Move move : moves) {
-            moveDo(move);
-            
-            nodesSearched 
-                += searchDo(depth - 1, val, moveBellow);
-            
-            if (Side == White && val > tmpValue || Side == Black && val < tmpValue) {
-                tmpValue = val;
-                tmpMove = move;
-            }
-
-            moveUndo();
-        }
-
-        bestValue = tmpValue;
-        bestMove = tmpMove;
-    }
-
-    return nodesSearched;
-    
-}
-
-uint64_t Board::searchAB(ExtMove& result, int depth) {
-    int bestValue;
-    Move bestMove;
-
-    int alpha = -INT_MAX; // note INT_MIN = -INT_MAX-1
-    int beta = INT_MAX;
-    
-    uint64_t nodesSearched
-        = searchDoAB(depth, bestValue, bestMove, alpha, beta, sideToMove() == White);
-    
-    result.val = bestValue;
-    result.move = bestMove;
-
-    return nodesSearched;
-}
-
-uint64_t Board::searchDoAB(int depth, int& nodeValue, Move& bestMove, int alpha, int beta, bool isMaxTurn) {
-    
-    int nodesSearched = 0;
-    int val;
-    Move moveBellow;
-
-    nodeValue = (isMaxTurn ? -INT_MAX : INT_MAX); // ?
-
-    std::vector<Move> moves;
-    moves.reserve(256);
-    movesForSide(sideToMove(), moves);
-
-
-    if (depth == 1) {
-        for (Move move : moves) {
-        
-            // alpha-beta pruning
-            if (alpha >= beta) {
-                break;
-            }
-
-            moveDo(move);
-            val = evaluate();    
-            nodesSearched += 1;
-            
-            if (isMaxTurn) {
-                if (val > alpha) {
-                    alpha = val; 
-                    nodeValue = val;
-                    bestMove = move;
-                }
-            } else {
-                if (val < beta) {
-                    beta = val;
-                    nodeValue = val;
-                    bestMove = move;
-                }
-            }
-
-            moveUndo();
-        }
-    } else {
-        for (Move move : moves) {
-            
-            // alpha-beta pruning
-            if (alpha >= beta) {
-                break;
-            }
-
-            moveDo(move);
-            
-            nodesSearched 
-                += searchDoAB(depth - 1, val, moveBellow, alpha, beta, !isMaxTurn);
-            
-            
-            if (isMaxTurn) {
-                if (val > alpha) {
-                    alpha = val; 
-                    nodeValue = val;
-                    bestMove = move;
-                }
-            } else {
-                if (val < beta) {
-                    beta = val;
-                    nodeValue = val;
-                    bestMove = move;
-                }
-            }
-
-            moveUndo();
-        }
-    }
-
-    return nodesSearched;
-}
-
-
+// Position doesn't generate a best move using uci and go command
+// r1b1k2r/1pQ2ppp/4p3/p6n/PbNP4/6P1/1PqN1KB1/R1B5 b kq - 2 21

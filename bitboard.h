@@ -74,7 +74,7 @@ Bitboard shift_bb(const Bitboard bboard) {
 ////         Population Count          ////
 ///////////////////////////////////////////
 
-#ifdef __GNUC__
+#if defined(__GNUC__) || defined(__clang__)
 inline int popcount_bb(Bitboard bboard) {
     return __builtin_popcountll(bboard);
 }

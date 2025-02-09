@@ -27,6 +27,9 @@ enum SquareEnum : std::uint8_t {
     SQUARE_CNT
 };
 
+constexpr std::uint8_t FILE_CNT = 8;
+constexpr std::uint8_t RANK_CNT = 8;
+
 enum PieceColor : std::uint8_t {
     White, Black,
     /////////////
@@ -183,9 +186,11 @@ public:
 }; // !class Piece
 
 enum MoveType : std::uint8_t {
-    // MoveType implementation is taken from the chessprogramming site:
-    // url: https://chessprogramming.wikispaces.com/Encoding+Moves
-    // fits into 4 bits flags as | Promotion | Capture | Special1 | Special0 |
+    // MoveType class defines possible move types
+    // Reference: https://chessprogramming.wikispaces.com/Encoding+Moves
+    //                          +-------------------------------------------+
+    // Fits into 4 bit as flags |   bit 3   |  bit 2  |   bit 1  |   bit 0  |
+    //                          | Promotion | Capture | Special1 | Special0 |
 
     Special_0 = SHL(1, 0),
     Special_1 = SHL(1, 1),
@@ -218,6 +223,7 @@ class Move
     // | Promotion | Capture | Special | Target | Origin |
     // |     15    |    14   |  13-12  |  11-8  |  5-0   |
     // | ----------------------------------------------- |
+    // |              Type             | Target | Origin |
 
 
 public:
@@ -243,14 +249,24 @@ public:
         return PieceType(Knight + (toType & ~(1 << 3))); // remove promotion flag
     }
 
+    constexpr std::uint16_t as_bits() const { return bits; }
+
     constexpr bool operator==(Move other) const { return (bits & other.bits) & 0xFFFF;}
     constexpr bool operator!=(Move other) const { return (bits & other.bits) & 0xFFFF;}
 }; // !class Move
 
 
+// Evaluation value
+using Value = int32_t;
+
+// Zobrist key
+using Key = uint64_t;
+
 struct ExtMove {
-    int val;
     Move move;
+    Value score;
 };
+
+
 
 #endif // ENGINETYPES_H

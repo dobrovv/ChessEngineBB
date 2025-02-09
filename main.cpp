@@ -5,10 +5,11 @@
 #include <chrono>
 
 #include "board.h"
+#include "tests.h"
 
 using namespace std;
 
-ostream& print_board(const Board& b, ostream& os = std::cout) {
+ostream& print_board(const Board& b, ostream& os = std::cout) { 
     os << "+------------------------+\n";
     for (Square i = a1; i < SQUARE_CNT; ++i) {
         if ( i.file() == 0) {
@@ -62,6 +63,10 @@ ostream& print_board_with_files(const Board& b, ostream& os = std::cout) {
     os << " |                        |\n";
     os << " +------------------------+\n";
     os << "   a  b  c  d  e  f  g  h  ";
+
+    os << "\n\nFEN: " << b.toFEN() << "\n";
+    os << "Key: " << b.positionState().hash << (b.hashPosition(b) == b.positionState().hash ? "" : "\tINVALID") << "\n";
+
     return os;
 }
 
@@ -100,13 +105,21 @@ ostream& print_move(const Move& move, ostream& os = std::cout) {
     return os;
 }
 
-/*Verifies that the specified move in moveStr as UCI notation string can be played and returns a move of type Move  
-  TODO: verify? return an invalid move if multiple moves are possible with the same string*/
+ostream& print_pv_moves(Board& b, Move firstSeqMove, ostream& os = std::cout) {
+    vector<Move> pv = b.getPrimaryVariation(firstSeqMove);
+    for ( auto mv : pv ) {
+        print_move(mv, os);
+        os << " ";
+    }
+    
+    return os;
+}
+
+/*Verifies that the specified move in moveStr as UCI notation string can be played and returns a valid engine move */
 Move verify_move(Board& b, std::string moveStr) {
     bool isOk = false;
     Move retMove {}; // invalid
-    vector<Move> moveList;
-    moveList.reserve(256);
+    MoveList moveList;
     
     b.movesForSide(b.sideToMove(), moveList);
 
@@ -124,7 +137,7 @@ Move verify_move(Board& b, std::string moveStr) {
 }
 
 Move randomMove(Board & b) {
-    vector<Move> moveList;
+    MoveList moveList;
     b.movesForSide(b.sideToMove(), moveList);
     if (moveList.size() > 0)
         return moveList[rand() % moveList.size()];
@@ -132,31 +145,34 @@ Move randomMove(Board & b) {
         return Move();
 }
 
-static int gDepth;
+
 uint64_t perft(Board& b, int depth){
-    if (depth == 0) {
-        return 1;
+    
+    uint64_t nodes_cnt = 0;
+
+    MoveList moveList;
+
+    if (depth <= 1) {
+        generate_all_moves(b, moveList);
+        return moveList.size();
+    } else {
+
+        generate_all_moves(b, moveList);
+
+        for (Move move : moveList) {
+
+            b.moveDo(move);
+            nodes_cnt += perft(b, depth - 1);
+            b.moveUndo();
+        }
     }
-
-    vector<Move> moveList;
-    moveList.reserve(256);
-    uint64_t nodes = 0;
-    b.movesForSide(b.sideToMove(), moveList);
-
-    for (Move move : moveList) {
-
-        b.moveDo(move);
-        nodes += perft(b, depth - 1);
-        b.moveUndo();
-    }
-    return nodes;
+    return nodes_cnt;
 
 }
 
 uint64_t divide(Board& b, int depth) {
 
-    vector<Move> moveList;
-    moveList.reserve(256);
+    MoveList moveList;
     uint64_t sumNodes = 0;
     b.movesForSide(b.sideToMove(), moveList);
     for (Move move : moveList) {
@@ -171,8 +187,7 @@ uint64_t divide(Board& b, int depth) {
     return sumNodes;
 }
 
-// reads the command input and returns each token
-// TODO: split string by any whitespace
+// reads a command line from the standart input and returns each token
 vector<string> getCommandArgs(void) {
     string cmdArgs;
     
@@ -186,16 +201,17 @@ vector<string> getCommandArgs(void) {
 
     return tokens;
 }
+
 // apply moves in an UCI notation to the board 'startPos'
-Board getBoardFromMoves(vector<string> moves, Board startPos = Board::startpos()) {
+Board getBoardFromMoves(vector<string> uciMoves, Board startPos = Board::startpos()) {
     
-    for(string move : moves) {
+    for(string move : uciMoves ) {
         Move nextMove = verify_move(startPos, move);
         if (nextMove.isValid()) {
             startPos.moveDo(nextMove);
         }
         else {
-            cout << "Invalid move. " << move << endl;
+            //cout << "Invalid move. " << move << endl;
             return Board::startpos();
         }
     }
@@ -203,13 +219,15 @@ Board getBoardFromMoves(vector<string> moves, Board startPos = Board::startpos()
     return startPos;
 }
 
+
+
 int main()
 {
     string uciMove;
     Move currentMove;
 
-    Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");
-    //Perft results wiki: https://www.chessprogramming.org/Perft_Results
+    Board board = Board::fromFEN("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1");    
+    
     /*Initial
         position fen rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1
         perft(6) = 119,060,324
@@ -228,18 +246,23 @@ int main()
     */
     //Board board = Board::fromFEN("8/8/3p4/KPp4r/1R2Pp1k/8/6P1/8 b - e3");
     
-    cout.imbue(std::locale("")); // use commas to decorate large integers
+    //cout.imbue(std::locale("")); // use commas to decorate large integers
 
-    while(1) {
+    while ( 1 ) {
         vector<string> args = getCommandArgs();
-        
-        if (args.size() == 2 && args[0] == "position" && args[1] == "startpos") {
+        if ( args.size() == 1 && args[0] == "uci" ) {
+            cout << "id name Chekov v0.13" << endl;
+            cout << "id author dobrovv" << endl;
+            cout << "uciok" << endl;
+        } else if (args.size() == 1 && args[0] == "isready" ) {
+            cout << "readyok" << endl;
+        } else if ( args.size() == 2 && args[0] == "position" && args[1] == "startpos" ) {
             board = getBoardFromMoves(vector<string>());
         }
         else if (args.size() >= 3 && args[0] == "position" && args[1] == "startpos" && args[2] == "moves") {
             vector<string> moves = std::vector<string>(args.begin() + 3, args.end());
             board = getBoardFromMoves(moves);
-            print_board_with_files(board) << "\n";
+            //print_board_with_files(board) << "\n";
         }
         else if (args.size() >= 2 && args[0] == "position" && args[1] == "fen") {
             std::stringstream fenSS;
@@ -261,7 +284,7 @@ int main()
             
             Board startPos = Board::fromFEN(fenSS.str());
             board = getBoardFromMoves(moves, startPos);
-            print_board_with_files(board) << "\n";
+            //print_board_with_files(board) << "\n";
 
         }
         else if (args.size() == 1 && args[0] == "d") {
@@ -357,17 +380,24 @@ int main()
             int depth = std::stoi(args[2]);
 
             auto start_time = std::chrono::high_resolution_clock::now();
-            uint64_t nodesSearched = board.search(result, depth);
+            uint64_t nodeCount = board.search(result, depth);
             auto stop_time = std::chrono::high_resolution_clock::now();
+            
+            auto delta_ms = std::max(std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count(), 1LL);
 
-            int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
-            delta_ms = std::max(delta_ms, 1);
+            
+            /*cout << "    value: " << result.score << " c.p.   " << nodeCount << " nodes " << delta_ms << "ms " << (nodeCount / delta_ms * 1000) << " nodes/s" << endl;
+            cout << "Primary variation: ";
+            print_pv_moves(board, result.move);
+            cout << endl;*/
 
-            cout << "Best move: ";
-            print_move(result.move);
-            cout << "    value: " << result.val << " c.p.   " << nodesSearched << " nodes " << delta_ms << "ms " << (nodesSearched / delta_ms * 1000) << " nodes/s" << endl;
+            Value relativeScore = result.score * (board.sideToMove() ? -1 : 1);
+
+            cout << "info " << "depth " << depth << " score cp " << relativeScore << " time " << delta_ms << " nodes " << nodeCount << " nps " << (nodeCount / delta_ms * 1000) << " pv "; print_pv_moves(board, result.move); cout << endl;
+            cout << "bestmove "; print_move(result.move); cout << endl; 
+
         }
-        else if (args.size() == 3 && args[0] == "go" && args[1] == "depthAB") {
+        /*else if (args.size() == 3 && args[0] == "go" && args[1] == "depthAB") {
             ExtMove result;
             int depth = std::stoi(args[2]);
 
@@ -380,35 +410,31 @@ int main()
 
             cout << "Best move: ";
             print_move(result.move);
-            cout << "    value: " << result.val << " c.p.   " << nodesSearched << " nodes " << delta_ms << "ms " << (nodesSearched / delta_ms * 1000) << " nodes/s" << endl;
-        }
-        else if (args.size() >= 2 && args[0] == "go" && args[1] == "auto") {
+            cout << "    value: " << result.score << " c.p.   " << nodesSearched << " nodes " << delta_ms << "ms " << (nodesSearched / delta_ms * 1000) << " nodes/s" << endl;
+        }*/
+        else if (args[0] == "go" ) {
+            
+            const int depth = 5;
             ExtMove result;
-            int depth = 4;
-            if (args.size() == 3)
-                depth = std::stoi(args[2]);
             
             auto start_time = std::chrono::high_resolution_clock::now();
-            
-            uint64_t nodesSearched = board.searchAB(result, depth);
-            
+            uint64_t nodeCount = board.search(result, depth);
             auto stop_time = std::chrono::high_resolution_clock::now();
-            int delta_ms = std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count();
-            delta_ms = std::max(delta_ms, 1);
 
-            cout << "Best move: ";
-            print_move(result.move);
-            cout << "   eval: " << result.val << " c.p.   " << nodesSearched << " nodes\t" << (nodesSearched / delta_ms * 1000) << " nodes/s" << endl;
+            auto delta_ms = std::max(std::chrono::duration_cast<std::chrono::milliseconds>(stop_time - start_time).count(), 1LL);
+
+            Value relativeScore = result.score * (board.sideToMove() ? -1 : 1);
+
+            cout << "info " << "depth " << depth << " score cp " << relativeScore << " time " << delta_ms << " nodes " << nodeCount << " nps " << (nodeCount / delta_ms * 1000) << " pv "; print_pv_moves(board, result.move); cout << endl;
             
-            if (result.move.isValid()) {
-                board.moveDo(result.move);
-                print_board_with_files(board) << '\n';
-            }
-        }
-        else if (args.size() == 1 && args[0] == "q" || args[0] == "quit" || args[0] == "exit") {
+            cout << "bestmove "; print_move(result.move); cout << endl;
+        
+        } else if (args.size() == 1 && (args[0] == "q" || args[0] == "quit" || args[0] == "exit")) {
             exit(0);
+        } else if (args.size() == 1 && args[0] == "test") {
+            do_tests();
         } else {
-            cout << "Invalid command." << endl;
+            //cout << "Invalid command." << endl;
         }
 
         
