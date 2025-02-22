@@ -33,7 +33,7 @@ void Board::moveDo(Move move)
 
     // Remove en passant square from the hash
     // Note that state here referes still to the old state before the move
-    if (state.epSquare != NOT_ENPASSANT)
+    if (state.epSquare != NOT_ENPASSANT_SQ )
         state.hash ^= Zobrist::enpassant[state.epSquare.file()];
 
     // set en passant square
@@ -46,7 +46,7 @@ void Board::moveDo(Move move)
         state.hash ^= Zobrist::enpassant[state.epSquare.file()];
 
     } else {
-        state.epSquare = NOT_ENPASSANT;
+        state.epSquare = NOT_ENPASSANT_SQ;
     }
 
     // handle half move clock for the fifty-move rule
@@ -126,6 +126,10 @@ void Board::moveDo(Move move)
         Square capturedPawn = piece.color() == White
                 ? target.prevRank()
                 : target.nextRank();
+
+        assert(pieceAt(capturedPawn).type() == Pawn);
+        assert(pieceAt(origin).type() == Pawn);
+
         captured_pieses.emplace_back(pieceAt(capturedPawn) ); // store captured pawn
         removePiece(capturedPawn);
         removePiece(origin );
@@ -213,8 +217,10 @@ void Board::moveDoNull() {
 
     // Remove en passant square from the hash
     // Note that state here referes still to the old state before the move
-    if ( state.epSquare != NOT_ENPASSANT )
+    if ( state.epSquare != NOT_ENPASSANT_SQ ) {
         state.hash ^= Zobrist::enpassant[state.epSquare.file()];
+        state.epSquare = NOT_ENPASSANT_SQ;
+    }
 
     side = !side;
     state.hash ^= Zobrist::black_to_move;
@@ -223,6 +229,8 @@ void Board::moveDoNull() {
 void Board::moveUndoNull() {
 
     side = !side;
+    
+    // restored by the state
     //state.hash ^= Zobrist::black_to_move;
 
     // restore the state

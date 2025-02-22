@@ -11,10 +11,6 @@
 /*-- Debugging on/off --*/
 #define gDebug false
 
-#undef assert
-#define assert(arg) {}
-//#define endl "\n"
-
 /*-- shift left and shift right macros --*/
 #define SHL(value, count) ( (std::uint64_t)(value) << (count) )
 #define SHR(value, count) ( (std::uint64_t)(value) >> (count) )

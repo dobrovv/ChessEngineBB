@@ -16,6 +16,7 @@ enum CastlingRights : std::uint8_t {
 };
 
 const Square NOT_ENPASSANT(a1); // invalid En Passant square
+const Square NOT_ENPASSANT_SQ(a1); // invalid En Passant square
 
 struct PositionState {
     std::uint8_t castle_rights;

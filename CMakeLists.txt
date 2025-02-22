@@ -62,7 +62,7 @@ if (MSVC)
     #add_compile_options(/W4 /WX /O2)
 
     SET(CMAKE_CXX_FLAGS_RELEASE "/Oy /O2")
-    SET(CMAKE_CXX_FLAGS_DEBUG "/O2 /Zi")
+    SET(CMAKE_CXX_FLAGS_DEBUG "/Zi") # SET(CMAKE_CXX_FLAGS_DEBUG "/O2 /Zi")
 
     # enable CPU profiling
     #set_target_properties(${BUILD_TARGET} PROPERTIES LINK_FLAGS "/PROFILE")

@@ -1,8 +1,8 @@
 #include "movegen.h"
 
 /* --
- -- Main move g
- -- Generates only legal moves
+ -- Generate strictly legal moves
+ -- for the current side to move
  -- */
 inline void generate_all_moves(Position& pos, MoveList& moveList);
 

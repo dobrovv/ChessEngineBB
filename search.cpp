@@ -420,6 +420,3 @@ void sort_moves(Board& b, int depth, MoveList& moves, Move bestMove) {
 
 // 3 fold repetition test position
 // 3rk1nr/p4pp1/2Q1p1b1/3pP1Pp/5B1P/NP2PK2/q1P2PB1/7R b k - 8 25
-
-// Illegal move at depth 8 - h8h7
-// fen r1b1k2r/pp1p1ppp/2nb4/2p5/8/P4PP1/1PPBP1BP/R3K1Nn b kq - 2 15
