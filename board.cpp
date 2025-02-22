@@ -6,6 +6,8 @@
 #include <limits> // INT_MAX, INT_MIN
 #include <algorithm> //std::min, std::max
 
+#include "util.h"
+
 Board::Board()
 {
     table = std::make_shared<TT>(256);
@@ -13,42 +15,6 @@ Board::Board()
 
 Board::~Board() {
     //free(table);
-}
-
-std::vector<Move> Board::getPrimaryVariation(Move bestMove) {
-    Board& b = *this;
-    std::vector<Move> pvmvs;
-
-    b.moveDo(bestMove);
-    pvmvs.push_back(bestMove);
-    
-    // make the best known move - the first in pv sequence
-    // get the next move from the TT table
-    TTEntry* cell = b.table->cell(b.state.hash);
-    while (cell->key == b.state.hash) {
-        MoveList legalMoves;
-        generate_all_moves(b, legalMoves);
-
-        // verify that the hashed move is legal
-        bool isLegal = false;
-        for ( Move legalMove : legalMoves )
-            if ( cell->move == legalMove )
-                isLegal = true;
-
-        if ( !isLegal )
-            break;
-
-        b.moveDo(cell->move);
-        pvmvs.push_back(cell->move);
-        cell = b.table->cell(b.state.hash);
-    }
-
-    // undo moves
-    for (int i = pvmvs.size() - 1; i >= 0; --i) {
-        b.moveUndo();
-    }
-
-    return pvmvs;
 }
 
 void Board::moveDo(Move move)
@@ -241,6 +207,29 @@ void Board::moveUndo()
 
 }
 
+void Board::moveDoNull() {
+    // save the previous state of the position
+    state_stack.emplace_back(positionState());
+
+    // Remove en passant square from the hash
+    // Note that state here referes still to the old state before the move
+    if ( state.epSquare != NOT_ENPASSANT )
+        state.hash ^= Zobrist::enpassant[state.epSquare.file()];
+
+    side = !side;
+    state.hash ^= Zobrist::black_to_move;
+}
+
+void Board::moveUndoNull() {
+
+    side = !side;
+    //state.hash ^= Zobrist::black_to_move;
+
+    // restore the state
+    setPositionState(state_stack.back());
+    state_stack.pop_back();
+}
+
 Key Board::hashPosition(const Position &pos) {
 
     Key key = 0;
@@ -261,6 +250,7 @@ Key Board::hashPosition(const Position &pos) {
 
     return key;
 }
+
 
 Board Board::fromFEN(std::string fenRecord)
 {
@@ -466,11 +456,3 @@ Value Board::evaluate() {
 uint64_t Board::search(ExtMove& result, int depth) {
     return ::search(*this, result, depth);
 }
-
-// Positions taking too long to evaluate
-// position fen rnbqkbnr/pppp1ppp/4p3/8/8/4P3/PPPP1PPP/RNBQKBNR w KQkq - 0 0
-// position startpos moves e2e4 d7d5 f1d3 d5e4 d3e4 g8f6 e4f3 e7e5 b1c3 a7a5 d2d3 b8c6 d1e2 d8e7 g1h3 c6d4 e2d1 h7h5 e1g1 c8g4 c3d5 - takes too long on depth 5
-// position startpos moves g1f3 d7d5 d2d4 c8f5 e2e3 d8d6 b1c3 b8c6 f1b5 a7a6 b5a4 b7b5 a4b3 -  takes longer on depth 4
-
-// Position doesn't generate a best move using uci and go command
-// r1b1k2r/1pQ2ppp/4p3/p6n/PbNP4/6P1/1PqN1KB1/R1B5 b kq - 2 21

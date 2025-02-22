@@ -1,6 +1,9 @@
 #include "movegen.h"
 
-
+/* --
+ -- Main move g
+ -- Generates only legal moves
+ -- */
 inline void generate_all_moves(Position& pos, MoveList& moveList);
 
 /*----------------------------
@@ -175,6 +178,32 @@ void generate_sliding_piece_moves(Position& pos, MoveList& moveList) {
     }
 }
 
+/*-- Helper to detect if a piece is attacked by a sliding piece from a direction --*/
+template<PieceColor enemyColor>
+inline bool isAttackedFromRay(Position &pos, Square origin, Direction dir) {
+    
+    const Bitboard Occupied = pos.occupied();
+
+    if ( isRookDirection(dir) ) {
+        const Bitboard attackerQueens = pos.pieces(enemyColor, Queen);
+        const Bitboard attackerRooks = pos.pieces(enemyColor, Rook);
+        const Bitboard seenBy = rayPieceSteps(Occupied, origin, dir) & (attackerQueens | attackerRooks);
+
+        if ( seenBy )
+            return true;
+
+    } else {
+        const Bitboard attackerQueens = pos.pieces(enemyColor, Queen);
+        const Bitboard attackerBishops = pos.pieces(enemyColor, Bishop);
+        const Bitboard seenBy = rayPieceSteps(Occupied, origin, dir) & (attackerQueens | attackerBishops);
+
+        if ( seenBy )
+            return true;
+    }
+
+    return false;
+}
+
 template<PieceColor color>
 void generate_king_moves(Position& pos, MoveList& moveList)
 {
@@ -194,31 +223,28 @@ void generate_king_moves(Position& pos, MoveList& moveList)
     assert(allyKings != 0);
 
     const Bitboard Occupied = pos.occupied();
-    const Square origin = lsb_bb(allyKings);
+    const Square kingSq = lsb_bb(allyKings);
 
 
-    Bitboard stepsOn = kingStepsBB[origin];
-    stepsOn ^= stepsOn & pos.colored(Ally);    // delete same colored pieces
+    Bitboard stepsOn = kingStepsBB[kingSq];
+    stepsOn ^= stepsOn & pos.colored(Ally);    // delete square with our pieces
 
     Bitboard  captures = stepsOn & pos.colored(Enemy);
-    stepsOn ^= captures;   // delete captures subset
-
-    //temporaly remove the King piece, in order to verify the movement of the checked King by isAttackedBy() along the attacking direction.
-    Piece kingPiece = pos.pieceAt(origin);
-    pos.removePiece(origin);
+    stepsOn ^= captures;   // delete the subset of captures
 
     foreach_pop_lsb(target, captures) {
-        if (isAttackedBy<Enemy>(pos, target) == false)
-            moveList.emplace_back(origin, target, Capture);
+        if ( isAttackedFromRay<Enemy>(pos, kingSq, fromToDirection[target][kingSq]) == false 
+            && isAttackedBy<Enemy>(pos, target) == false ) {
+            moveList.emplace_back(kingSq, target, Capture);
+        }
     }
 
     foreach_pop_lsb(target, stepsOn) {
-        if (isAttackedBy<Enemy>(pos, target) == false)
-            moveList.emplace_back(origin, target, QuietMove);
+        if ( isAttackedFromRay<Enemy>(pos, kingSq, fromToDirection[target][kingSq]) == false
+            && isAttackedBy<Enemy>(pos, target) == false ) {
+            moveList.emplace_back(kingSq, target, QuietMove);
+        }
     }
-
-    // return the King piece to its position
-    pos.setPiece(kingPiece, origin);
 
     // Note: Rook moves and castle rights are handled by moveDo/moveUndo, but check that the rook is on it's original square i.e. rook isn't captured by an enemy piece.
     bool canCastleQSide = (pos.castling() & AllyCastleQSide) && (pos.pieces(Ally, Rook) & SHL(1, RookQSide));
@@ -229,11 +255,12 @@ void generate_king_moves(Position& pos, MoveList& moveList)
             pop_lsb_bb(kingStepsOn);   // unused - not on the kings way
             foreach_pop_lsb(square, kingStepsOn) {
                 if (isAttackedBy<Enemy>(pos, square)) {
-                    canCastleQSide = false; break;
+                    canCastleQSide = false; 
+                    break;
                 }
             }
             if (canCastleQSide)
-                moveList.emplace_back(origin, TargetQSide, CastleQSide);
+                moveList.emplace_back(kingSq, TargetQSide, CastleQSide);
         }
     }
 
@@ -250,7 +277,7 @@ void generate_king_moves(Position& pos, MoveList& moveList)
                 }
             }
             if (canCastleKSide) {
-                moveList.emplace_back(origin, TargetKSide, CastleKSide);
+                moveList.emplace_back(kingSq, TargetKSide, CastleKSide);
             }
         }
     }
@@ -343,8 +370,7 @@ void generate_king_moves(Position& pos, MoveList& moveList)
 //    }
 //}
 
-// same as generate_moves_to_target_sq but without king moves
-// TODO: used for generate_moves_under_check, possibly redesign
+// same as generate_moves_to_target_sq but without king moves used for generate_moves_under_check
 template<PieceColor color>
 void generate_nk_moves_to_target_sq(Position& pos, Square target, MoveList& moveList) {
 
@@ -495,7 +521,7 @@ void generate_moves_under_check(Position& pos, MoveList& moveList) {
 }
 
 
-// Singleton, to initialize bitboards used for move generation
+/*-- singleton to initialize bitboards that are used for move generation --*/
 struct GlobalsInitializerMoves {
     GlobalsInitializerMoves() {
 
@@ -578,7 +604,7 @@ struct GlobalsInitializerMoves {
     }
 } const globalsInitializerMoves;
 
-// Explicit template instantiations to link against templates that are defined in a source .cpp file
+/*-- Explicit template instantiations to link against templates in other source files --*/ 
 template void generate_pawn_moves<White>(Position& pos, MoveList& moveList);
 template void generate_pawn_moves<Black>(Position& pos, MoveList& moveList);
 

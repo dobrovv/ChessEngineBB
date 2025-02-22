@@ -4,20 +4,19 @@
 #include "position.h"
 #include "movegen.h"
 
-//r1bqkb1r/pp2nppp/2p5/3p3Q/P3n3/2N1P3/1PP2PPP/R1B1KBNR w KQ - 2 15
-
-
 /*---------------
  -- Evaluation --
  --------------*/
 
- // Piece Weights for material calucaltion in centipawns
- // Details for weights https://www.chessprogramming.org/Simplified_Evaluation_Function
+/*--
+-- Piece Weights for material calucaltion in centipawns
+-- Details for weights at https://www.chessprogramming.org/Simplified_Evaluation_Function
+--*/
 const static int PieceWeight[TYPE_CNT] = {
     0,       // Empty
     100,     // Pawn
     320,     // Knight,
-    330,     // Bishop, 
+    330,     // Bishop,     
     500,     // Rook, 
     900,     // Queen
     0,       // King
@@ -30,31 +29,33 @@ template <PieceColor Color> inline uint32_t mobility_for_bishop(const Position& 
 template <PieceColor Color> inline uint32_t mobility_for_rook(const Position& pos, Square origin);
 template <PieceColor Color> inline uint32_t mobility_for_queen(const Position& pos, Square origin);
 
-// Helper, Finds all blocked pawns for the side Color
-template <PieceColor Color> inline Bitboard blockedPawns(const Position& pos);
+// Helper, Finds all blocked pawns for the side Us
+template <PieceColor Us> inline Bitboard blockedPawns(const Position& pos);
 
-
-inline int32_t evaluate(Position& pos) {
+// Evaluates a position from the perspective of the side to move, consideres material and mobility.
+inline Score evaluate(Position& pos) {
 
 
     // Weight of one extra square reached by a piece for mobility calculation
-    const static int MobilityWeight = 1;
+    const int MobilityWeight = 1;
 
-    int32_t materialScore = 0;
+    Score materialScore = 0;
 
     for (PieceType pt = Pawn; pt < King; pt = PieceType(pt + 1)) {
         materialScore += PieceWeight[pt] * (popcount_bb(pos.pieces(White, pt)) - popcount_bb(pos.pieces(Black, pt)));
     }
 
     find_pinned_pieces<White>(pos);
-    int32_t whiteMobility = mobility_score_for<White>(pos);
+    Score whiteMobility = mobility_score_for<White>(pos);
 
     find_pinned_pieces<Black>(pos);
-    int32_t blackMobility = mobility_score_for<Black>(pos);
+    Score blackMobility = mobility_score_for<Black>(pos);
 
-    int32_t mobilityScore = MobilityWeight * (whiteMobility - blackMobility);
+    Score mobilityScore = MobilityWeight * (whiteMobility - blackMobility);
 
-    return materialScore + mobilityScore;
+    Score totalScore = materialScore + mobilityScore;
+
+    return totalScore * (pos.blacks_turn() ? -1 : 1);
 }
 
 

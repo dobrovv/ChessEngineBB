@@ -1,5 +1,6 @@
 #include "zobrist.h"
 
+/*-- Initialize Zobrist hashkeys to random values --*/
 void Zobrist::init() {
 
     PRNG rng(6960111479);
@@ -7,7 +8,7 @@ void Zobrist::init() {
     // Zobrist keys of each color for each piece type on each square
     for (int c = 0; c < COLOR_CNT; c++)
         for (int sq = 0; sq < SQUARE_CNT; sq++)
-            for (int t = Pawn; t < TYPE_CNT; t++)
+            for (int t = 0; t < TYPE_CNT; t++)
                 pieces[c][sq][t] = rng.rand64();
 
     // All permutations of castling rights

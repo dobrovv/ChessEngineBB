@@ -7,6 +7,7 @@
 #include <vector>
 #include <string> // for FEN
 #include <memory>
+#include <utility> // max
 
 #include "movegen.h"
 #include "evaluate.h"
@@ -27,8 +28,14 @@ public:
     void moveDo(Move move);
     void moveUndo();
 
+    void moveDoNull();
+    void moveUndoNull();
 
-    std::vector<Move> getPrimaryVariation(Move bestMove);
+    bool detectRepetition() const;
+
+    inline TT* ttable() { return table.get(); }
+
+    std::vector<Move> getPrimaryVariation();
 
     static Board fromFEN(std::string fenRecord);
     std::string toFEN() const;
@@ -59,10 +66,29 @@ public:
     // Search for the best move
     uint64_t search(ExtMove& result, int depth = 5);
 
-
-
-
+    friend int main();
 };
+
+/* -- 
+-- Detect draws by the threefold repetition rule
+-- Iterates trought the made moves and compares zobrist key to the position
+-- */
+inline bool Board::detectRepetition() const {
+    int stateSize = state_stack.size();
+    int movesToSearch = std::min((int)pstate().halfmove_clock, stateSize);
+    
+    const Key phash = pstate().hash;
+    int repetitions = 0;
+
+    /* TODO: (?)verify, i can be incremented by 2 */
+    for ( int i = 1; i <= movesToSearch; i+=1 ) {
+        if ( state_stack[stateSize-i].hash == phash ) {
+            repetitions++;
+            if ( repetitions >= 2 ) return true;
+        }
+    }
+    return false;
+}
 
 template <PieceColor Color>
 uint32_t Board::getMobilityScore() {

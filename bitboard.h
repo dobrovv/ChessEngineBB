@@ -48,7 +48,7 @@ constexpr bool is_set_bb(Bitboard bboard, Square square) {
     return bboard & SHL(1,square);
 }
 
-template <Direction dir> inline
+template <Direction dir> constexpr
 Bitboard shift_bb(const Bitboard bboard) {
 
     if (dir == NorthWest) {
@@ -111,12 +111,12 @@ inline Square msb_bb(Bitboard bboard) {
 #elif _MSC_VER
 #include <intrin.h>
 inline Square lsb_bb(Bitboard bboard) {
-    assert(bb != 0);
+    assert(bboard != 0);
     return _tzcnt_u64(bboard);
 }
 
 inline Square msb_bb(Bitboard bboard) {
-    assert(bb != 0);
+    assert(bboard != 0);
     return _lzcnt_u64(bboard) ^ 63;
 
 }
@@ -182,6 +182,6 @@ inline Square pop_msb_bb(Bitboard &bboard) {
 }
 
 //TODO: (?) replace square by uint8_t
-#define foreach_pop_lsb(square, bboard) for (Square square; (bboard) && ((square = pop_lsb_bb(bboard)) || true);)
+#define foreach_pop_lsb(square, bboard) for (Square square; (bboard) && ((square = pop_lsb_bb(bboard)), true);)
 
 #endif // BITBOARD_H

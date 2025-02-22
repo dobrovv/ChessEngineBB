@@ -6,11 +6,18 @@
 #include "position.h"
 
 
-//using MoveList = std::vector<Move>;
+/*--------------
+ -- Move List --
+ -------------*/
+
+/* --
+-- This is the main way moves are returned by the move generator, each element
+-- consists of the move, and a priory score called sort used for move ordering during the search .
+-- */
 
 class MoveList {
-    Move moveList[256];
-    Move* end_of_list;
+    SortMove moveList[256];     // Maximum num of moves in chess is 218
+    SortMove* end_of_list;
 
 public:
     MoveList() {
@@ -18,37 +25,68 @@ public:
     }
 
     inline void emplace_back(Square origin, Square target, MoveType type) {
-        *end_of_list++ = Move(origin, target, type);
+        *end_of_list++ = SortMove(origin, target, type);
     }
 
-    inline bool empty() {
+    inline bool empty() const {
         return end_of_list == &moveList[0];
     }
 
-    inline size_t size() {
+    inline size_t size() const {
         return end_of_list - &moveList[0];
     }
 
-    inline Move operator[](int index) { return moveList[index]; }
+    inline SortMove& operator[](int index) { return moveList[index]; }
 
-    Move* begin() { return &moveList[0]; }
-    const Move* begin() const { return &moveList[0]; }
-    Move* end() { return end_of_list; }
-    const Move* end() const { return end_of_list; }
-
+    SortMove* begin() { return &moveList[0]; }
+    const SortMove* begin() const { return &moveList[0]; }
+    SortMove* end() { return end_of_list; }
+    const SortMove* end() const { return end_of_list; }
 };
+
+/*-----------------------------
+ -- Move generation constans --
+ ----------------------------*/
+
+ // Directional offsets, file and rank offsets of a corresponding direction dir 
+constexpr std::int8_t directionStepOffsets[DIRECTION_CNT][2] = { {-1,+1}, {+0,+1}, {+1,+1}, {+1,0}, {+1,-1}, {+0,-1}, {-1,-1}, {-1,+0} };
+
+// Knight atacks, file and rank offset to the atacked squares
+constexpr std::int8_t knightStepOffsets[8][2] = { {+1,+2}, {+2,+1}, {+2,-1}, {+1,-2}, {-1,-2}, {-2,-1}, {-2,+1}, {-1,+2} };
+
+// Diagonal squares attacked by the pawn of color 'color' at square sq
+extern Bitboard pawnCaptureStepsBB[COLOR_CNT][SQUARE_CNT];
+
+// All adjacent and diagonal squares at square sq
+extern Bitboard kingStepsBB[SQUARE_CNT];
+
+// All squares attacked by a knight at square sq
+extern Bitboard knightStepsBB[SQUARE_CNT];
+
+// All ray squares starting at (and excluding) square sq in direction dir
+extern Bitboard directionStepsBB[SQUARE_CNT][DIRECTION_CNT]; 
+
+// Direction between suare sq and square sq2 otherwise NO_DIRECTION
+extern Direction fromToDirection[SQUARE_CNT][SQUARE_CNT]; 
+
 
 /*--------------------
  -- Move generation --
- --------------------*/
+ -------------------*/
 
- // Generates all legal moves for the given position
+/*-- Generates all and only legal moves for the current stm --*/
 inline void generate_all_moves(Position& pos, MoveList& moveList);
 
-// Finds the pinned pieces for the side Color and stores the pinned pieces in the position's pinned_bb variable
-// used by isAbsolutelyPinned() and must be computed for each new move before any move generation code
+/* --
+-- Finds the pinned pieces for the side Color and stores the pinned pieces in the position's pinned_bb variable
+-- used by isAbsolutelyPinned() and must be computed for each new move before any move generation code
+-- */
 template<PieceColor Color>
 void find_pinned_pieces(Position& pos);
+
+/*----------------------------
+ -- Move generation helpers --
+ ---------------------------*/
 
 template<PieceColor color>
 void generate_pawn_moves(Position& pos, MoveList& moveList);
@@ -73,9 +111,9 @@ void generate_nk_moves_to_target_sq(Position& pos, Square target, MoveList& move
 template<PieceColor color>
 void generate_moves_under_check(Position& pos, MoveList& moveList);
 
-/*---------------------------
- -- Position state helpers --
- --------------------------*/
+/*-----------------------------
+ -- Position state inqueries --
+ ----------------------------*/
 
 template <PieceColor bySide>
 Bitboard attackersOf(const Position& pos, const Square square);
@@ -116,32 +154,15 @@ inline bool isDefended( const Position& pos, PieceColor defender, const Square s
     }
 }
 
-/*-----------------------------
- -- Move generation constans --
- ----------------------------*/
+/*-- Determines if the possition is currently in check --*/
+inline bool IsKingInCheck(const Position& pos) {
+    if ( pos.sideToMove() == White )
+        return isKingAttacked<White>(pos);
+    else
+        return isKingAttacked<Black>(pos);
+}
 
-// Directional offsets, file and rank offsets of a corresponding direction dir 
-constexpr std::int8_t directionStepOffsets[DIRECTION_CNT][2] = { {-1,+1}, {+0,+1}, {+1,+1}, {+1,0}, {+1,-1}, {+0,-1}, {-1,-1}, {-1,+0} };
-
-// Knight atacks, file and rank offset to the atacked squares
-constexpr std::int8_t knightStepOffsets[8][2] = { {+1,+2}, {+2,+1}, {+2,-1}, {+1,-2}, {-1,-2}, {-2,-1}, {-2,+1}, {-1,+2} };
-
-// Diagonal squares attacked by the pawn of color 'color' at square sq
-extern Bitboard pawnCaptureStepsBB[COLOR_CNT][SQUARE_CNT]; 
-
-// All adjacent and diagonal squares at square sq
-extern Bitboard kingStepsBB[SQUARE_CNT]; 
-
-// All squares attacked by a knight at square sq
-extern Bitboard knightStepsBB[SQUARE_CNT]; 
-
-extern Bitboard directionStepsBB[SQUARE_CNT][DIRECTION_CNT]; // all ray squares starting at (and excluding) square sq in direction dir
-
-extern Direction fromToDirection[SQUARE_CNT][SQUARE_CNT]; // direction between suare sq and square sq2 or NO_DIRECTION
-
-
-
-// Generates all legal moves for the given position
+/*-- Generates all and only legal moves for the current stm --*/
 inline void generate_all_moves(Position& pos, MoveList& moveList) {
 
     if (pos.sideToMove() == White) {
@@ -218,16 +239,22 @@ inline void find_pinned_pieces(Position& pos) {
 
 }
 
-// Sliding Piece Attacks source:
-// https://chessprogramming.wikispaces.com/Classical+Approach
-// Gets the directional attack of a piece up to (and including) the first blocker piece.
+/*----------------------------
+ -- Move generation helpers --
+ ---------------------------*/
+
+/* --
+-- Sliding Piece Attacks
+-- Details https://chessprogramming.wikispaces.com/Classical+Approach
+-- Gets the directional attack of a piece up to (and including) the first blocker piece.
+-- */
 inline Bitboard rayPieceSteps(const Bitboard occupied, const Square origin, const Direction dir) {
     Bitboard ray = directionStepsBB[origin][dir];
     Bitboard blocker = ray & occupied;
     if (blocker) {
         Square blockerSquare = isDirectionPositive(dir)
             ? lsb_bb(blocker)      // direction is positive - scan forward
-            : msb_bb(blocker);     // direction is nevatige - scan reverse
+            : msb_bb(blocker);     // direction is nevatige - scan backward
         ray ^= directionStepsBB[blockerSquare][dir];
     }
     return ray;
@@ -268,7 +295,7 @@ inline Bitboard attackersOf(const Position& pos, const Square square) {
     return result;
 }
 
-/* Returns true if the square target is attacked by the side attackerColor*/
+/* Returns true if the target square is attacked by the side attackerColor*/
 template<PieceColor attackerColor>
 inline bool isAttackedBy(const Position& pos, const Square target) {
 
@@ -394,7 +421,7 @@ inline bool isAbsolutelyPinned(const Position& pos, const Square pinned, const D
 
 template<PieceColor color>
 inline bool isEnPasCaptureLegal(const Position &pos, const Square origin) {
-    assert(state.epSquare != NOT_ENPASSANT);
+    assert(pos.pstate().epSquare != NOT_ENPASSANT);
 
     Bitboard kingBB = pos.pieces(color, King);
     if (kingBB) {

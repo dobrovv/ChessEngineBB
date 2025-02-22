@@ -5,6 +5,8 @@
 #include "bitboard.h"
 #include "zobrist.h"
 
+#include <iostream>
+
 enum CastlingRights : std::uint8_t {
     NoCastlingFlags = 0,
     CastlingFlagWQ = SHL(1,0),
@@ -55,14 +57,20 @@ public:
     inline Square enPassantSq() const { return state.epSquare; }
     inline std::uint8_t castling() const { return state.castle_rights; }
     std::uint8_t halfmove_clock() const { return state.halfmove_clock; }
+    Key hash() const { return state.hash; }
     
     inline Bitboard pinned() const { return pinned_bb; }
     inline void setPinned(Bitboard newPinned) { pinned_bb = newPinned; }
 
     inline PieceColor sideToMove() const { return side;}
-    inline void setSideToMove(PieceColor color) { side = color; }
+    inline PieceColor stm() const { return side; }
+    inline bool blacks_turn() const { return side; }
+
+    inline void setSideToMove(PieceColor color) { side = color; }    
 
     inline PositionState positionState() const { return state; }
+    inline PositionState pstate() const  { return this->state; }
+
     inline void setPositionState(PositionState positionState) { state = positionState;}
 
     //bool isOccupied(Square square) const { return is_set_bb(occupied_bb, square); }

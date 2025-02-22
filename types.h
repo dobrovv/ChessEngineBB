@@ -6,11 +6,16 @@
 #include <algorithm>
 #include <vector>
 
+//#define DISABLE_TT
+
+/*-- Debugging on/off --*/
+#define gDebug false
+
 #undef assert
 #define assert(arg) {}
 //#define endl "\n"
 
-// shift left and shift right macros
+/*-- shift left and shift right macros --*/
 #define SHL(value, count) ( (std::uint64_t)(value) << (count) )
 #define SHR(value, count) ( (std::uint64_t)(value) >> (count) )
 
@@ -86,6 +91,16 @@ constexpr bool isDirectionNegative(Direction dir) {
     return dir >= 4;
 }
 
+constexpr bool isRookDirection(Direction dir) {
+    assert(dir != NO_DIRECTION);
+    return dir % 2 != 0;    // (dir == North || dir == East || dir == South || dir == West);
+}
+
+constexpr bool isBishopDirection(Direction dir) {
+    assert(dir != NO_DIRECTION);
+    return dir % 2 == 0;    // (dir == NorthWest || dir == NorthEast || dir == SouthEast || dir == SouthWest);
+}
+
 constexpr bool isDirectionRook(Direction dir) {
     assert(dir != NO_DIRECTION);
     return dir % 2 != 0;    // (dir == North || dir == East || dir == South || dir == West);
@@ -96,7 +111,7 @@ constexpr bool isDirectionBishop(Direction dir) {
     return dir % 2 == 0;    // (dir == NorthWest || dir == NorthEast || dir == SouthEast || dir == SouthWest);
 }
 
-// inverse of the direction dir
+/*-- inverts the direction dir --*/
 constexpr Direction invDir(Direction dir) {
     assert(dir != NO_DIRECTION);
     return static_cast<Direction>( (dir + 4) % DIRECTION_CNT );
@@ -135,6 +150,7 @@ public:
     constexpr bool sameRank(Square other) const { return rank() == other.rank(); }
 
     constexpr Square flipVertically() const { return ofst ^ 56; }
+    constexpr Square flip() const { return ofst ^ 56; }
 
     inline std::uint8_t chessboardDistance(Square other) const {
         return std::max( std::abs( other.file() - file() ), std::abs( other.rank() - rank() ) );
@@ -142,7 +158,6 @@ public:
 
     //constexpr operator SquareEnum() const { return SquareEnum(ofst); }
     inline constexpr operator std::uint8_t() const { return ofst; }
-
 
     inline Square& operator++() { ofst++; return *this; }
     constexpr bool operator==(SquareEnum other) { return ofst == other; }
@@ -230,6 +245,9 @@ public:
 
     constexpr Move()
         : bits(0) {}
+    
+    constexpr Move(uint16_t bits) 
+        : bits(bits) {}
 
     constexpr Move(Square origin, Square target, MoveType type)
         : bits( (origin & 0x3F) | ((target & 0x3F) << 6) | ((type & 0x0F) << 12) ) {}
@@ -251,22 +269,48 @@ public:
 
     constexpr std::uint16_t as_bits() const { return bits; }
 
-    constexpr bool operator==(Move other) const { return (bits & other.bits) & 0xFFFF;}
-    constexpr bool operator!=(Move other) const { return (bits & other.bits) & 0xFFFF;}
+    constexpr bool operator==(Move other) const { return bits == other.bits; }
+    constexpr bool operator!=(Move other) const { return bits != other.bits; }
 }; // !class Move
 
 
-// Evaluation value
+#define NullMove Move(0)
+
+/*-- A value respresenting the move ordering priority --*/
+using Sort = int16_t;
+
+/*-- Extended move --*/
+struct SortMove : Move {
+    Sort sort; 
+    
+    SortMove() {}
+
+    SortMove(Move mv)
+        : Move(mv) {};
+
+    SortMove(Square origin, Square target, MoveType type)
+        : Move(origin, target, type) {}
+};
+
+/*-- Evaluation value --*/
 using Value = int32_t;
 
-// Zobrist key
+/*-- A value representing the engine's evaluation value in centi-pawns --*/
+using Score = int32_t;
+
+/*-- Time in ms --*/
+using Time = uint64_t;
+
+/*-- Represents a checkmate or the maximum / minimum achievable score --*/
+constexpr Score CHECKMATE_SCORE = 100000;//INT_MAX; // note INT_MIN = -INT_MAX-1
+
+/*-- Zobrist key --*/
 using Key = uint64_t;
 
 struct ExtMove {
     Move move;
-    Value score;
+    Score score;
 };
-
 
 
 #endif // ENGINETYPES_H

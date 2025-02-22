@@ -4,6 +4,7 @@
 #include <iostream>
 
 #include "board.h"
+#include "search.h"
 
 using namespace std;
 
@@ -16,7 +17,7 @@ uint64_t perft(Board& b, int depth);
 bool test_movegen() {
     
     // Perft results wiki: https://www.chessprogramming.org/Perft_Results
-	// Table of (fen, depth, nodes) for test positions
+	// Table of (fen, depth, nodes) for the test positions
 	vector<tuple<string, int, uint64_t>> perftTestPositions = {
 		{ "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1", 5, 4865609 },  // Initial
         { "r3k2r/p1ppqpb1/bn2pnp1/3PN3/1p2P3/2N2Q1p/PPPBBPPP/R3K2R w KQkq -", 4, 4085603 }, // Kiwipete
@@ -32,12 +33,35 @@ bool test_movegen() {
         cout << "POSITION: [" << std::get<0>(pos) << "] DEPTH: " << std::get<1>(pos) << " NODES:  " << std::get<2>(pos) << " STATUS: ";
         
         b = Board::fromFEN(std::get<0>(pos));
+
         uint64_t nodes = perft(b, std::get<1>(pos));
 
         if (nodes == std::get<2>(pos))
-            cout << " PASS" << endl;
+            cout << " PASS " <<  endl;
         else {
-            cout << "FAIL" << endl; 
+            cout << "FAIL " << nodes << endl;
+            return false;
+        }
+    }
+
+    // test with search
+    for ( auto pos : perftTestPositions ) {
+        cout << "POSITION: [" << std::get<0>(pos) << "] DEPTH: " << std::get<1>(pos) << " NODES:  " << std::get<2>(pos) << " SEARCH 8: " << endl;
+
+        b = Board::fromFEN(std::get<0>(pos));
+
+        ExtMove res;
+        SearchRequest rs;
+        rs.depth = 8;
+        rs.limits = DepthLimit;
+        start_search(b, res, rs);
+
+        uint64_t nodes = perft(b, std::get<1>(pos));
+
+        if ( nodes == std::get<2>(pos) )
+            cout << " PASS " << endl;
+        else {
+            cout << "FAIL nodes " << nodes << endl;
             return false;
         }
     }

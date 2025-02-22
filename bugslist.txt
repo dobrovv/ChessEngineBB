@@ -2728,3 +2728,6 @@ Best move: h4h5    value: 2,147,483,647 c.p.   10,181 nodes 1ms 10,181,000 nodes
 **Bug** g1g8 is winning
 (fixed) eval must subtract the number of moves until mate from the MAX score, MAX score indicates the possition is in checkmate
 ===================================================================================================================================================================
+position fen r1b1k2r/pp1p1ppp/2nb4/2p5/8/P4PP1/1PPBP1BP/R3K1Nn b kq - 2 15
+illegal move at depth 8 - h8h7
+but not at lower depths, perft also gives 34 (correct) before a search and after 35 

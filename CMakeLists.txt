@@ -50,7 +50,7 @@ message(STATUS "My Windows SDK version: ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSI
 # Link each target with other targets or add options, etc.
 
 # Adding something we can run - Output name matches target name
-add_executable(MyChessEngine main.cpp types.h bitboard.h position.h position.cpp board.h board.cpp movegen.h movegen.cpp "tests.cpp" "evaluate.h" "search.h" "zobrist.h" "zobrist.cpp" "tt.h" "search.cpp")
+add_executable(MyChessEngine main.cpp types.h bitboard.h position.h position.cpp board.h board.cpp movegen.h movegen.cpp "tests.cpp" "evaluate.h" "search.h" "zobrist.h" "zobrist.cpp" "tt.h" "search.cpp" "util.h" "util.cpp" "out/engine.h" "engine.h")
 
 # Make sure you link your targets with this command. It can also link libraries and
 # even flags, so linking a target that does not exist will not give a configure-time error.

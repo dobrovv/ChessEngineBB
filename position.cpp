@@ -2,14 +2,14 @@
 #include "movegen.h"
 #include <cstring> // memset()
 
-// Precomputed Bitboards used as shortcuts during move generation
+/*-- Precomputed Bitboards used as shortcuts during move generation --*/
 Bitboard pawnCaptureStepsBB[COLOR_CNT][SQUARE_CNT];
 Bitboard kingStepsBB[SQUARE_CNT];
 Bitboard knightStepsBB[SQUARE_CNT];
 Bitboard directionStepsBB[SQUARE_CNT][DIRECTION_CNT];
 Direction fromToDirection[SQUARE_CNT][SQUARE_CNT];
 
-// Precomputed Zobrist keys used to compute hashcode of the current position
+/*-- Precomputed Zobrist keys used to compute hashcode of the current position --*/
 Key Zobrist::pieces[COLOR_CNT][SQUARE_CNT][TYPE_CNT];
 Key Zobrist::black_to_move;
 Key Zobrist::castling[16];
