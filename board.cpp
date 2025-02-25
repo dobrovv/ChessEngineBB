@@ -26,6 +26,8 @@ void Board::moveDo(Move move)
     Piece piece = pieceAt(origin);
     PieceType pieceType = piece.type();
 
+    assert(piece.type() != Empty);
+
     /* handle state changes */
 
     // save the previous state of the position
@@ -123,9 +125,17 @@ void Board::moveDo(Move move)
         }
 
     } else if (moveType == CaptureEnPas) {
+        // target points to the en passant square
         Square capturedPawn = piece.color() == White
                 ? target.prevRank()
                 : target.nextRank();
+
+        if ( pieceAt(capturedPawn).type() != Pawn ) {
+            //Piece pieceat = pieceAt(capturedPawn);
+            //cout << (int)piece.type() << " ";
+            print_board_with_files(*this);
+            
+        }
 
         assert(pieceAt(capturedPawn).type() == Pawn);
         assert(pieceAt(origin).type() == Pawn);
@@ -154,6 +164,7 @@ void Board::moveUndo()
     const Piece pieceOrig = pieceAt(target);
     const MoveType moveType = move.type();
 
+    assert(pieceOrig.type() != Empty);
 
     if (moveType == QuietMove) {
         removePiece(target );
@@ -428,7 +439,7 @@ std::string Board::toFEN() const {
 
     // Print en passant square
     Square enPassant = pos.enPassantSq(); 
-    if ( enPassant != NOT_ENPASSANT ) {
+    if ( enPassant != NOT_ENPASSANT_SQ ) {
         char symbolic[3] = "";
         symbolic[0] = 'a' + enPassant.file();
         symbolic[1] = '1' + enPassant.rank();

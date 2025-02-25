@@ -2728,7 +2728,39 @@ Best move: h4h5    value: 2,147,483,647 c.p.   10,181 nodes 1ms 10,181,000 nodes
 **Bug** g1g8 is winning
 (fixed) eval must subtract the number of moves until mate from the MAX score, MAX score indicates the possition is in checkmate
 ===================================================================================================================================================================
+v0.14
+===================================================================================================================================================================
 position fen r1b1k2r/pp1p1ppp/2nb4/2p5/8/P4PP1/1PPBP1BP/R3K1Nn b kq - 2 15
 illegal move at depth 8 - h8h7
 but not at lower depths, perft also gives 34 (correct) before a search and after 35 
 (fixed) caused by the moveDoNull null move not setting the en-passant target square to false
+====================================================================================================================================================================
+position causes an error in movegen after an (falsly) en passant capture at b2a1, if the same position is regenerated
+FEN: 4Q3/8/8/3K4/1p6/k7/1p6/R7 b - - 0 0
+go perft 1
+a3b3: 1
+d
+   a  b  c  d  e  f  g  h
+ +------------------------+
+ |                        |
+8| .  .  .  .  Q  .  .  . |8
+ |                        |
+7| .  .  .  .  .  .  .  . |7
+ |                        |
+6| .  .  .  .  .  .  .  . |6
+ |                        |
+5| .  .  .  K  .  .  .  . |5
+ |                        |
+4| .  p  .  .  .  .  .  . |4
+ |                        |
+3| k  .  .  .  .  .  .  . |3
+ |                        |
+2| .  p  .  .  .  .  .  . |2
+ |                        |
+1| R  .  .  .  .  .  .  . |1
+ |                        |
+ +------------------------+
+   a  b  c  d  e  f  g  h
+(fixed) since an illegal enpassant square is set as the a1 square, but the routine for king moves under check assumed that enpassant square was always legal, the move to a1 was generated as an enpassant capture
+(on line)	target == pos.enPassantSq()
+(added)		&& target != NOT_ENPASSANT_SQ

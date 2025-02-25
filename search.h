@@ -4,7 +4,7 @@
 #include "movegen.h"
 #include "engine.h"
 
-/*-- disbale heuristics and extensions used by the search--*/
+/*-- Disables heuristics and extensions used by the search--*/
 
 //#define DISABLE_QSEARCH
 //#define DISABLE_NULL_MOVE_PRUNING

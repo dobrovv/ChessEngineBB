@@ -10,6 +10,8 @@
 
 /*-- Debugging on/off --*/
 #define gDebug false
+//#undef assert
+//#define assert() {}
 
 /*-- shift left and shift right macros --*/
 #define SHL(value, count) ( (std::uint64_t)(value) << (count) )

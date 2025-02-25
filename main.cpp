@@ -12,7 +12,6 @@
 using namespace std;
 
 
-
 // Reads a command line from the standart input and returns an array of tokens
 vector<string> getCommandArgs(void) {
     string cmdArgs;

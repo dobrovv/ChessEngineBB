@@ -94,7 +94,7 @@ void generate_pawn_moves(Position& pos, MoveList& moveList)
         }
     }
 
-    // En passant handling
+    // En passant capture handling
     if (pos.enPassantSq() != NOT_ENPASSANT) {
         Bitboard pawns_set = pawnCaptureStepsBB[Enemy][pos.enPassantSq()] & allyPawns;
         foreach_pop_lsb(origin, pawns_set) {
@@ -324,7 +324,7 @@ void generate_king_moves(Position& pos, MoveList& moveList)
 //        Piece pieceTrgt = pieceAt(target);
 //
 //        if (pieceOrig.isPawn()) { // is a pawn
-//            if (target == state.epSquare) {
+//            if (target == state.epSquare && target != NOT_ENPASSANT_SQ) {
 //                if (isAbsolutelyPinned<color>(origin, fromToDirection[origin][target]) == false) {
 //                    moveList.emplace_back(origin, target, CaptureEnPas);
 //                }
@@ -411,7 +411,8 @@ void generate_nk_moves_to_target_sq(Position& pos, Square target, MoveList& move
         Piece pieceTrgt = pos.pieceAt(target);
 
         if (pieceOrig.isPawn()) { // is a pawn
-            if (target == pos.enPassantSq()) {
+            // handle enpassant capture when enPassant square is set
+            if (target == pos.enPassantSq() && target != NOT_ENPASSANT_SQ) {
                 if (isAbsolutelyPinned<color>(pos, origin, fromToDirection[origin][target]) == false) {
                     moveList.emplace_back(origin, target, CaptureEnPas);
                 }

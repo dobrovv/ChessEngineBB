@@ -420,3 +420,12 @@ void sort_moves(Board& b, int depth, MoveList& moves, Move bestMove) {
 
 // 3 fold repetition test position
 // 3rk1nr/p4pp1/2Q1p1b1/3pP1Pp/5B1P/NP2PK2/q1P2PB1/7R b k - 8 25
+
+// Black makes illegal move a3b3
+//position fen 8/8/p3P3/3K4/1p6/kP2R3/8/8 b - - 0 66
+// Details
+// info depth 12 seldepth 14 score cp - 1233 time 66 nodes 271316 nps 4110000 pv a3b3 e6e7 a6a5 e7e8q a5a4 e8f8 a4a3 f8f6 b3c2 f6f5 c2b2 d5c4
+// bestmove a3b3
+
+// position fen 4Q3/8/8/3K4/1p6/k7/1p6/R7 b - - 0 0
+// go perft 1 -> leads
